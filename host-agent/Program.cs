@@ -130,11 +130,22 @@ static (bool Success, string Result) ExecuteCommand(Command command)
     return command.CommandType switch
     {
         "scan_devices"  => RunNetsh("wlan show hostednetwork"),
-        "start_hotspot" => RunNetsh("wlan start hostednetwork"),
+        "start_hotspot" => StartHotspot(),
         "stop_hotspot"  => RunNetsh("wlan stop hostednetwork"),
         "sync_media"    => (true, "media sync job enqueued"),
         var unknown     => (false, $"unsupported command: {unknown}")
     };
+}
+
+static (bool Success, string Result) StartHotspot()
+{
+    // Step 1: configure SSID + key (idempotent — safe to run every time)
+    var (setupOk, setupOut) = RunNetsh("wlan set hostednetwork mode=allow ssid=NativeShare key=nativeshare123");
+    if (!setupOk) return (false, $"setup failed: {setupOut}");
+
+    // Step 2: start
+    var (startOk, startOut) = RunNetsh("wlan start hostednetwork");
+    return (startOk, $"{setupOut}\n{startOut}".Trim());
 }
 
 static (bool Success, string Result) RunNetsh(string args)
