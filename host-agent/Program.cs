@@ -2,8 +2,24 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
+// ── Elevation check (Windows) ────────────────────────────────────────────────
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    using var identity = WindowsIdentity.GetCurrent();
+    var principal = new WindowsPrincipal(identity);
+    if (!principal.IsInRole(WindowsBuiltInRole.Administrator))
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Error.WriteLine("ERROR: host-agent must run as Administrator (netsh requires elevation).");
+        Console.Error.WriteLine("Right-click the terminal and choose 'Run as administrator', then try again.");
+        Console.ResetColor();
+        Environment.Exit(1);
+    }
+}
 
 var config = AgentConfig.FromEnvironment(args);
 using var httpClient = new HttpClient
