@@ -50,3 +50,9 @@ next-env.d.ts
 host-agent/bin/
 host-agent/obj/
 
+.env*.local
+
+dist/
+launcher/bin/
+launcher/obj/
+
