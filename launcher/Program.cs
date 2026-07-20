@@ -83,26 +83,38 @@ static class Program
     {
         KillPort(3000);
 
-        var npmCmd = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "npx.cmd" : "npx";
+        var logPath = Path.Combine(Root, "dist", "web.log");
+        File.WriteAllText(logPath, $"[{DateTime.Now}] Starting Next.js in {Root}\n");
 
-        var psi = new ProcessStartInfo
+        // Use cmd /c to ensure PATH is fully resolved in the shell
+        var psi = new ProcessStartInfo("cmd.exe")
         {
-            FileName               = npmCmd,
-            Arguments              = $"next dev --hostname 0.0.0.0 --port {Port}",
-            WorkingDirectory       = Root,
-            UseShellExecute        = false,
-            CreateNoWindow         = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError  = true,
+            Arguments        = $"/c \"cd /d \"{Root}\" && npx next dev --hostname 0.0.0.0 --port {Port} >> \"{logPath}\" 2>&1\"",
+            UseShellExecute  = false,
+            CreateNoWindow   = true,
+            WorkingDirectory = Root,
         };
 
-        // Forward env vars
+        // Inject env vars via cmd SET
         psi.Environment["HOST_AGENT_TOKEN"] = "native-dev-token";
-        CopyEnvVar(psi, "ANTHROPIC_API_KEY");
-        CopyEnvVar(psi, "BLOB_READ_WRITE_TOKEN");
-        CopyEnvVar(psi, "BLOB_STORE_ID");
+        LoadDotEnv(Path.Combine(Root, ".env.local"), psi);
 
         _web = Process.Start(psi);
+    }
+
+    static void LoadDotEnv(string path, ProcessStartInfo psi)
+    {
+        if (!File.Exists(path)) return;
+        foreach (var line in File.ReadAllLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
+            var idx = line.IndexOf('=');
+            if (idx < 1) continue;
+            var key = line[..idx].Trim();
+            var val = line[(idx + 1)..].Trim().Trim('"');
+            if (!string.IsNullOrEmpty(key) && !psi.Environment.ContainsKey(key))
+                psi.Environment[key] = val;
+        }
     }
 
     // ── Agent (C#) ──────────────────────────────────────────────────────────
@@ -211,14 +223,20 @@ static class Program
 
     static string FindRoot()
     {
-        // Walk up from the exe location to find package.json (Next.js root)
-        var dir = AppContext.BaseDirectory;
+        // For single-file exe, AppContext.BaseDirectory is a temp extraction dir.
+        // Use the exe's actual location instead.
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory)
+                     ?? AppContext.BaseDirectory;
+
+        // Walk up looking for package.json (Next.js root marker)
+        var dir = exeDir;
         while (dir != null)
         {
             if (File.Exists(Path.Combine(dir, "package.json"))) return dir;
             dir = Path.GetDirectoryName(dir);
         }
-        // Fallback: assume launcher/ is inside the project root
-        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
+
+        // Fallback: exe is in dist/ inside the project root
+        return Path.GetFullPath(Path.Combine(exeDir, ".."));
     }
 }
