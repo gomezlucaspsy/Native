@@ -14,10 +14,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Native Share Cloud",
-  description:
-    "A Vercel-hosted control plane for local hotspot sharing, QuickShare sessions, and Claude-guided automation.",
-  applicationName: "Native Share Cloud",
+  title: "Native Share",
+  description: "WiFi hotspot manager with QuickShare and Claude AI.",
+  applicationName: "Native Share",
   manifest: "/manifest.webmanifest",
 };
 

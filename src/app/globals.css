@@ -1,32 +1,222 @@
 @import "tailwindcss";
 
 :root {
-  --background: #090b10;
-  --foreground: #f5f5f4;
+  --bg: #080808;
+  --panel: #101010;
+  --border: #1e1e1e;
+  --fg: #d0d0d0;
+  --muted: #484848;
+  --green: #39ff14;
+  --green-glow: rgba(57,255,20,0.15);
+  --red: #ff3b3b;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-space-grotesk);
-  --font-mono: var(--font-ibm-plex-mono);
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'IBM Plex Mono', monospace;
+  height: 100%;
 }
 
-* {
-  box-sizing: border-box;
+/* scanline grid */
+.grid-overlay {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(57,255,20,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57,255,20,.03) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
-html {
-  background: var(--background);
+.shell { min-height: 100vh; padding: 1rem 1.25rem; position: relative; }
+
+/* topbar */
+.topbar {
+  position: relative; z-index: 1;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem; margin-bottom: 0;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-space-grotesk), sans-serif;
+.logo { font-size: 1rem; font-weight: 700; letter-spacing: 0.12em; color: #eee; }
+.logo-accent { color: var(--green); }
+
+/* hotspot pill in header */
+.hs-pill {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.65rem; letter-spacing: 0.1em;
+  border: 1px solid var(--border);
+  padding: 0.2rem 0.6rem;
+}
+.hs-pill.on  { border-color: var(--green); color: var(--green); }
+.hs-pill.off { color: var(--muted); }
+.pill-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.hs-pill.on .pill-dot { box-shadow: 0 0 6px var(--green); }
+
+/* tabs */
+.tabs {
+  position: relative; z-index: 1;
+  display: flex; border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+.tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); font-family: inherit; font-size: 0.7rem;
+  letter-spacing: 0.1em; padding: 0.65rem 1rem; cursor: pointer;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+/* pane */
+.pane {
+  position: relative; z-index: 1;
+  max-width: 680px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 1rem;
+}
+
+.center-pane {
+  align-items: center; justify-content: center;
+  min-height: 60vh;
+}
+
+.pane-title {
+  font-size: 0.68rem; text-transform: uppercase;
+  letter-spacing: 0.12em; color: var(--green);
+}
+
+.pane-sub { font-size: 0.78rem; color: var(--muted); }
+
+.empty { font-size: 0.78rem; color: var(--muted); }
+
+/* ── hotspot card ── */
+.hs-card {
+  display: flex; flex-direction: column; align-items: center; gap: 1rem;
+  padding: 2.5rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  width: 100%; max-width: 320px;
+}
+
+.hs-ring {
+  width: 80px; height: 80px; border-radius: 50%;
+  border: 2px solid var(--muted);
+  transition: border-color .3s, box-shadow .3s;
+}
+.hs-ring.on {
+  border-color: var(--green);
+  box-shadow: 0 0 24px var(--green-glow), inset 0 0 24px var(--green-glow);
+}
+
+.hs-state { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.12em; }
+
+.hs-sub { font-size: 0.7rem; color: var(--muted); }
+
+.hs-btn {
+  width: 100%; padding: 0.7rem;
+  border: none; font-family: inherit; font-size: 0.75rem;
+  font-weight: 700; letter-spacing: 0.1em; cursor: pointer;
+}
+.hs-btn.primary { background: var(--green); color: #050505; }
+.hs-btn.danger  { background: var(--red);   color: #fff; }
+.hs-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ── list ── */
+.list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.list-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border); background: var(--panel);
+}
+
+.list-icon { font-size: 1.1rem; flex-shrink: 0; }
+
+.list-body { flex: 1; min-width: 0; }
+.list-body strong { display: block; font-size: 0.85rem; }
+.list-body small  { color: var(--muted); font-size: 0.7rem; }
+
+.del-btn {
+  background: none; border: 1px solid var(--border);
+  color: var(--muted); font-size: 0.72rem;
+  padding: 0.2rem 0.45rem; cursor: pointer; flex-shrink: 0;
+}
+.del-btn:hover { border-color: var(--red); color: var(--red); }
+
+/* ── quickshare ── */
+.drop-zone {
+  border: 1px dashed var(--muted);
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.75rem; letter-spacing: 0.08em; color: var(--muted);
+  cursor: pointer; transition: border-color .2s, color .2s;
+}
+.drop-zone:hover, .drop-zone.drag-active {
+  border-color: var(--green); color: var(--green);
+}
+
+.share-row { align-items: flex-start; }
+
+.share-link {
+  display: block; font-size: 0.7rem; color: var(--green);
+  margin-top: 0.2rem; word-break: break-all;
+}
+
+.qr-img {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: white;
+  padding: 2px;
+}
+
+/* ── chat ── */
+.chat-pane { height: calc(100vh - 140px); }
+
+.chat-log {
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 0.65rem;
+  padding-bottom: 0.5rem;
+}
+
+.bubble { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.role { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.bubble.assistant .role { color: var(--green); }
+
+.bubble p {
+  font-size: 0.82rem; line-height: 1.55;
+  background: var(--panel); border: 1px solid var(--border);
+  padding: 0.5rem 0.7rem; white-space: pre-wrap;
+}
+.bubble.user p { background: #141414; border-color: #2a2a2a; }
+
+.thinking { animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.chat-form {
+  display: flex; gap: 0.4rem;
+  border-top: 1px solid var(--border); padding-top: 0.75rem; flex-shrink: 0;
+}
+
+.chat-form input {
+  flex: 1; background: var(--panel); border: 1px solid var(--border);
+  color: var(--fg); font-family: inherit; font-size: 0.82rem;
+  padding: 0.5rem 0.7rem;
+}
+.chat-form input:focus { outline: 1px solid var(--green); }
+
+.chat-form button {
+  background: var(--green); border: none; color: #050505;
+  font-size: 1rem; font-weight: 700; padding: 0.5rem 0.8rem; cursor: pointer;
+}
+.chat-form button:disabled { opacity: 0.35; cursor: default; }
+
+@media (max-width: 600px) {
+  .tabs { overflow-x: auto; }
+  .hs-card { max-width: 100%; }
 }

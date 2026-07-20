@@ -19,6 +19,8 @@
 
 # production
 /build
+/target
+/host-agent/target
 
 # misc
 .DS_Store
@@ -41,3 +43,10 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+.env*
+
+.vs/
+*.vsidx
+host-agent/bin/
+host-agent/obj/
+

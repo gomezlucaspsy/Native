@@ -1,0 +1,46 @@
+import { NextRequest, NextResponse } from "next/server";
+import { completeCommand } from "@/lib/control-plane";
+
+function isAuthorized(request: NextRequest): boolean {
+  const expected = process.env.HOST_AGENT_TOKEN || "native-dev-token";
+  const authHeader = request.headers.get("authorization") || "";
+  const bearer = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length).trim()
+    : "";
+  return bearer === expected;
+}
+
+export async function POST(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | {
+        agentId?: string;
+        commandId?: string;
+        success?: boolean;
+        result?: string;
+      }
+    | null;
+
+  if (!body?.agentId || !body.commandId || typeof body.success !== "boolean") {
+    return NextResponse.json(
+      { error: "agentId, commandId and success are required" },
+      { status: 400 },
+    );
+  }
+
+  const command = completeCommand({
+    agentId: body.agentId,
+    commandId: body.commandId,
+    success: body.success,
+    result: body.result,
+  });
+
+  if (!command) {
+    return NextResponse.json({ error: "command not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, command });
+}
