@@ -151,72 +151,72 @@ html, body {
 /* ── quickshare ── */
 .drop-zone {
   border: 1px dashed var(--muted);
-  padding: 2rem 1rem;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
   text-align: center;
-  font-size: 0.75rem; letter-spacing: 0.08em; color: var(--muted);
-  cursor: pointer; transition: border-color .2s, color .2s;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  transition: border-color .2s, color .2s;
 }
 .drop-zone:hover, .drop-zone.drag-active {
-  border-color: var(--green); color: var(--green);
+  border-color: var(--green);
+  color: var(--green);
 }
+.drop-zone.uploading { opacity: 0.6; }
 
-.share-row { align-items: flex-start; }
+.drop-icon { font-size: 1.4rem; }
 
-.share-link {
-  display: block; font-size: 0.7rem; color: var(--green);
-  margin-top: 0.2rem; word-break: break-all;
+.browse-btn {
+  background: none;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
 }
+.browse-btn:hover { border-color: var(--green); color: var(--green); }
+.browse-btn:disabled { opacity: 0.4; cursor: default; }
 
-.qr-img {
-  flex-shrink: 0;
+/* add after .hs-sub */
+.hs-result {
+  font-size: 0.68rem;
+  color: var(--green);
+  background: #0a0a0a;
   border: 1px solid var(--border);
-  background: white;
-  padding: 2px;
+  padding: 0.5rem 0.65rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+  width: 100%;
+  text-align: left;
 }
 
-/* ── chat ── */
-.chat-pane { height: calc(100vh - 140px); }
-
-.chat-log {
-  flex: 1; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 0.65rem;
-  padding-bottom: 0.5rem;
+/* pane header row */
+.pane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.bubble { display: flex; flex-direction: column; gap: 0.15rem; }
-
-.role { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
-.bubble.assistant .role { color: var(--green); }
-
-.bubble p {
-  font-size: 0.82rem; line-height: 1.55;
-  background: var(--panel); border: 1px solid var(--border);
-  padding: 0.5rem 0.7rem; white-space: pre-wrap;
+.refresh-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
 }
-.bubble.user p { background: #141414; border-color: #2a2a2a; }
+.refresh-btn:hover { color: var(--green); border-color: var(--green); }
 
-.thinking { animation: blink 1s step-end infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-
-.chat-form {
-  display: flex; gap: 0.4rem;
-  border-top: 1px solid var(--border); padding-top: 0.75rem; flex-shrink: 0;
-}
-
-.chat-form input {
-  flex: 1; background: var(--panel); border: 1px solid var(--border);
-  color: var(--fg); font-family: inherit; font-size: 0.82rem;
-  padding: 0.5rem 0.7rem;
-}
-.chat-form input:focus { outline: 1px solid var(--green); }
-
-.chat-form button {
-  background: var(--green); border: none; color: #050505;
-  font-size: 1rem; font-weight: 700; padding: 0.5rem 0.8rem; cursor: pointer;
-}
-.chat-form button:disabled { opacity: 0.35; cursor: default; }
-
-@media (max-width: 600px) {
-  .tabs { overflow-x: auto; }
-  .hs-card { max-width: 100%; }
-}
+/* error text */
+.err-text { font-size: 0.75rem; color: var(--red); }
