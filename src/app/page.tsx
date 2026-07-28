@@ -249,17 +249,21 @@ export default function Home() {
           <div className="list">
             {shares.length === 0 && <p className="empty">No shared files yet.</p>}
             {shares.map((s) => (
-              <div key={s.id} className="list-row share-row">
-                <div className="list-body">
+              <div key={s.id} className="share-card">
+                <div className="share-card-head">
                   <strong>{s.name}</strong>
+                  <button className="del-btn" onClick={() => deleteShare(s.id)}>✕</button>
+                </div>
+                {s.qr && (
+                  <div className="qr-wrap">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.qr} alt="QR code" className="qr-img" />
+                  </div>
+                )}
+                <div className="share-meta">
                   <small>{(s.size / 1024).toFixed(1)} KB · {new Date(s.createdAt).toLocaleTimeString()}</small>
                   <a className="share-link" href={s.url} target="_blank" rel="noreferrer">{s.url}</a>
                 </div>
-                {s.qr && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.qr} alt="QR code" width={80} height={80} className="qr-img" />
-                )}
-                <button className="del-btn" onClick={() => deleteShare(s.id)}>✕</button>
               </div>
             ))}
           </div>
