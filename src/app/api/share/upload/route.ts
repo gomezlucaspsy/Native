@@ -29,7 +29,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       request,
       onBeforeGenerateToken: async (_pathname, clientPayload) => {
         return {
-          allowedContentTypes: ["*/*"],
+          // No allowedContentTypes restriction — QuickShare is meant to take
+          // any file type, and Blob's wildcard matching only works within a
+          // type ("text/*"), not as a blanket "*/*".
           addRandomSuffix: false,
           maximumSizeInBytes: MAX_UPLOAD_BYTES,
           tokenPayload: clientPayload,
