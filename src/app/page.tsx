@@ -144,7 +144,11 @@ export default function Home() {
     setShares((s) => s.filter((x) => x.id !== id));
   }
 
-  useEffect(() => { loadShares(); }, []);
+  useEffect(() => {
+    loadShares();
+    const t = setInterval(loadShares, 5000);
+    return () => clearInterval(t);
+  }, []);
 
   // ── Claude chat ───────────────────────────────────────────
   // NOTE: Anthropic requires conversation starts with role "user"
@@ -173,7 +177,13 @@ export default function Home() {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: next, filesTree: fsTree(fsLoad()) }),
+        body: JSON.stringify({
+          messages: next,
+          filesTree: fsTree(fsLoad()),
+          sharesTree: shares.length
+            ? shares.map((s) => `${s.name} (${(s.size / 1024).toFixed(1)} KB) → ${s.url}`).join("\n")
+            : "(no shared files yet)",
+        }),
       });
       if (!res.ok) {
         const err = await res.text();
@@ -297,6 +307,28 @@ export default function Home() {
             </p>
           </div>
           <FileExplorer refreshKey={filesVersion} />
+
+          <div className="section-head">
+            <h2 className="pane-title">SHARED FILES</h2>
+            <p className="pane-sub">
+              Files sent via QUICKSHARE — kept in sync here too, and visible to Claude (in the CLAUDE tab).
+            </p>
+          </div>
+          <div className="list">
+            {shares.length === 0 && <p className="empty">No shared files yet.</p>}
+            {shares.map((s) => (
+              <div key={s.id} className="share-card">
+                <div className="share-card-head">
+                  <strong>{s.name}</strong>
+                  <button className="del-btn" onClick={() => deleteShare(s.id)}>✕</button>
+                </div>
+                <div className="share-meta">
+                  <small>{(s.size / 1024).toFixed(1)} KB · {new Date(s.createdAt).toLocaleTimeString()}</small>
+                  <a className="share-link" href={s.url} target="_blank" rel="noreferrer">{s.url}</a>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -327,7 +359,7 @@ export default function Home() {
                 DOCUMENTS
               </button>
               <button className="browse-btn" disabled={uploading} onClick={() => anyRef.current?.click()} type="button">
-                ALL FILES
+                OTHER
               </button>
             </div>
             <input

@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       messages: { role: "user" | "assistant"; text: string }[];
       filesTree?: string;
+      sharesTree?: string;
     };
 
     // Anthropic requires messages alternate user/assistant and start with user
@@ -24,7 +25,9 @@ export async function POST(request: NextRequest) {
       "You are the assistant built into Native Share. You help the user check on their computer's status and share files via QR code. Be concise and practical.",
       "The user also has a sandboxed virtual filesystem in the MY COMPUTER tab (browser-only, not the real disk). Current contents:",
       body.filesTree?.trim() || "(empty)",
-      "You can create, update, or delete an entry in it by ending your reply with a single fenced block in this exact format (only when the user actually asks you to manage a file/folder):",
+      "The user has also shared files via QUICKSHARE (also listed under MY COMPUTER → SHARED FILES). These are real uploaded files, each reachable at its own URL. Current shared files:",
+      body.sharesTree?.trim() || "(no shared files yet)",
+      "You can create, update, or delete an entry in the virtual filesystem by ending your reply with a single fenced block in this exact format (only when the user actually asks you to manage a file/folder):",
       '```file-action\n{"action":"create","path":"/","name":"notes.txt","type":"file","content":"hello"}\n```',
       'action is one of "create" | "update" | "delete". type is "file" | "folder" (omit for delete). path is the parent folder ("/" for root); name is required for create/update. Only include this block when actually performing a file operation.',
     ].join("\n\n");
