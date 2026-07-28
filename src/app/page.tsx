@@ -18,6 +18,9 @@ type Message = { role: "user" | "assistant"; text: string };
 type Tab = "computer" | "share" | "chat";
 type ShareFile = { id: string; name: string; size: number; url: string; qr: string; createdAt: string };
 
+const DOC_ACCEPT =
+  ".pdf,.doc,.docx,.txt,.rtf,.md,.csv,.xls,.xlsx,.ppt,.pptx,.zip,.json,application/pdf,text/plain";
+
 // Claude replies can end with a fenced ```file-action {...}``` block to create,
 // update, or delete an entry in the sandboxed "computer" filesystem. Parse it
 // out, apply it, and strip it from the text shown in the chat bubble.
@@ -106,7 +109,9 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const photoRef = useRef<HTMLInputElement>(null);
+  const docRef = useRef<HTMLInputElement>(null);
+  const anyRef = useRef<HTMLInputElement>(null);
 
   async function uploadFile(file: File) {
     setUploading(true);
@@ -122,7 +127,7 @@ export default function Home() {
       setUploadError(`Upload error: ${e}`);
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+      [photoRef, docRef, anyRef].forEach((r) => { if (r.current) r.current.value = ""; });
     }
   }
 
@@ -313,18 +318,42 @@ export default function Home() {
             }}
           >
             <span className="drop-icon">⬆</span>
-            <span>{uploading ? "UPLOADING..." : dragOver ? "DROP IT!" : "DROP FILE HERE"}</span>
-            <button
-              className="browse-btn"
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-              type="button"
-            >
-              BROWSE
-            </button>
+            <span>{uploading ? "UPLOADING..." : dragOver ? "DROP IT!" : "DROP ANY FILE HERE"}</span>
+            <div className="browse-row">
+              <button className="browse-btn" disabled={uploading} onClick={() => photoRef.current?.click()} type="button">
+                PHOTOS / VIDEOS
+              </button>
+              <button className="browse-btn" disabled={uploading} onClick={() => docRef.current?.click()} type="button">
+                DOCUMENTS
+              </button>
+              <button className="browse-btn" disabled={uploading} onClick={() => anyRef.current?.click()} type="button">
+                ALL FILES
+              </button>
+            </div>
             <input
-              ref={fileRef}
+              ref={photoRef}
               type="file"
+              accept="image/*,video/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadFile(f);
+              }}
+            />
+            <input
+              ref={docRef}
+              type="file"
+              accept={DOC_ACCEPT}
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadFile(f);
+              }}
+            />
+            <input
+              ref={anyRef}
+              type="file"
+              accept="*/*"
               style={{ display: "none" }}
               onChange={(e) => {
                 const f = e.target.files?.[0];

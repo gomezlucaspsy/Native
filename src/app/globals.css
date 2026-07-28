@@ -205,6 +205,11 @@ html, body {
 
 .drop-icon { font-size: 1.4rem; }
 
+.browse-row {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
 .browse-btn {
   background: none;
   border: 1px solid var(--muted);
@@ -214,7 +219,6 @@ html, body {
   letter-spacing: 0.1em;
   padding: 0.3rem 0.8rem;
   cursor: pointer;
-  margin-top: 0.25rem;
 }
 .browse-btn:hover { border-color: var(--green); color: var(--green); }
 .browse-btn:disabled { opacity: 0.4; cursor: default; }
