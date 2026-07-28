@@ -17,6 +17,9 @@
 #ifndef StageDir
   #define StageDir "..\stage"
 #endif
+#ifndef RepoRoot
+  #define RepoRoot ".."
+#endif
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"
 #endif
@@ -45,7 +48,12 @@ OutputBaseFilename=NativeShareSetup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile={#StageDir}\dist\NativeShare.exe
+; Must be a small .ico, not the ~150MB self-contained launcher exe below —
+; Inno Setup embeds this file's icon resource at compile time and hits a
+; resource-size limit ("Resource update error: File is too large") on a
+; file that big. UninstallDisplayIcon/[Icons] below reuse the big exe fine
+; since Windows just extracts its icon at runtime, no compile-time embedding.
+SetupIconFile={#RepoRoot}\launcher\icon.ico
 UninstallDisplayIcon={app}\dist\NativeShare.exe
 UninstallDisplayName={#MyAppName}
 ChangesEnvironment=no

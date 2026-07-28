@@ -94,6 +94,7 @@ jobs:
         run: >
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           "/DStageDir=$PWD\stage"
+          "/DRepoRoot=$PWD"
           "/DMyAppVersion=${{ steps.version.outputs.version }}"
           installer\NativeShare.iss
 
