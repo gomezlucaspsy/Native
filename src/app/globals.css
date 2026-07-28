@@ -145,6 +145,38 @@ html, body {
 }
 .del-btn:hover { border-color: var(--red); color: var(--red); }
 
+/* ── share card / qr ── */
+.share-card {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border); background: var(--panel);
+}
+.share-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.5rem;
+}
+.share-card-head strong { font-size: 0.85rem; min-width: 0; overflow-wrap: anywhere; }
+
+.qr-wrap {
+  display: flex; justify-content: center; align-items: center;
+  padding: 0.75rem;
+  background: #0a0a0a;
+  border: 1px solid var(--border);
+}
+.qr-img {
+  width: min(280px, 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  image-rendering: pixelated;
+}
+
+.share-meta {
+  display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+  text-align: center;
+}
+.share-meta small { color: var(--muted); font-size: 0.7rem; }
+.share-link { font-size: 0.72rem; word-break: break-all; }
+
 /* ── quickshare ── */
 .drop-zone {
   border: 1px dashed var(--muted);
