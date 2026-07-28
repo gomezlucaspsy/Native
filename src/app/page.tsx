@@ -2,84 +2,66 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Device = { id: string; name: string; ip: string; mac: string; connectedAt: string };
-type HotspotStatus = "on" | "off" | "loading";
+type Agent = {
+  agentId: string;
+  label: string;
+  platform: string;
+  version: string;
+  lastSeenAt: string;
+  status: "online" | "offline";
+};
 type Message = { role: "user" | "assistant"; text: string };
-type Tab = "hotspot" | "devices" | "share" | "chat";
+type Tab = "computer" | "share" | "chat";
 type ShareFile = { id: string; name: string; size: number; url: string; qr: string; createdAt: string };
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("hotspot");
+  const [tab, setTab] = useState<Tab>("computer");
 
-  // ── Hotspot ──────────────────────────────────────────────
-  const [hotspot, setHotspot] = useState<HotspotStatus>("off");
-  const [hotspotResult, setHotspotResult] = useState("");
+  // ── My Computer ──────────────────────────────────────────
+  const [computer, setComputer] = useState<Agent | null>(null);
+  const [computerError, setComputerError] = useState("");
+  const [labelInput, setLabelInput] = useState("");
+  const [savingLabel, setSavingLabel] = useState(false);
 
-  async function toggleHotspot() {
-    const cmdType = hotspot === "on" ? "stop_hotspot" : "start_hotspot";
-    setHotspot("loading");
-    setHotspotResult("");
+  async function loadComputer() {
     try {
-      const res = await fetch("/api/agent/commands", {
-        method: "POST",
+      const res = await fetch("/api/control/state");
+      if (!res.ok) { setComputerError(`Error ${res.status}`); return; }
+      const data = await res.json() as { agents: Agent[] };
+      const agent = data.agents[0] ?? null;
+      setComputer(agent);
+      setComputerError("");
+      if (agent) setLabelInput((prev) => (prev ? prev : agent.label));
+    } catch (e) {
+      setComputerError(`Failed to load: ${e}`);
+    }
+  }
+
+  async function renameComputer() {
+    if (!computer || !labelInput.trim()) return;
+    setSavingLabel(true);
+    try {
+      const res = await fetch(`/api/computer/${computer.agentId}`, {
+        method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ agentId: "host-main", type: cmdType, payload: {} }),
+        body: JSON.stringify({ label: labelInput.trim() }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setHotspot(cmdType === "start_hotspot" ? "on" : "off");
-      setHotspotResult(cmdType === "start_hotspot" ? "Hotspot starting..." : "Hotspot stopping...");
-      // Poll for the command result so we can show real netsh output
-      pollCommandResult(cmdType === "start_hotspot" ? "on" : "off");
-    } catch (e) {
-      setHotspotResult(`Error: ${e}`);
-      setHotspot("off");
+      if (res.ok) setComputer(await res.json());
+    } finally {
+      setSavingLabel(false);
     }
   }
 
-  function pollCommandResult(expectedState: "on" | "off") {
-    let attempts = 0;
-    const timer = setInterval(async () => {
-      attempts++;
-      try {
-        const res = await fetch("/api/control/state");
-        if (!res.ok) return;
-        const data = await res.json() as { commands: { type: string; status: string; result?: string }[] };
-        const cmd = data.commands.find(
-          (c) => c.type === (expectedState === "on" ? "start_hotspot" : "stop_hotspot") &&
-                 (c.status === "completed" || c.status === "failed")
-        );
-        if (cmd || attempts > 10) {
-          clearInterval(timer);
-          if (cmd?.result) setHotspotResult(cmd.result);
-        }
-      } catch { clearInterval(timer); }
-    }, 2000);
-  }
-
-  // ── Devices ───────────────────────────────────────────────
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [devError, setDevError] = useState("");
-
-  async function loadDevices() {
-    try {
-      const res = await fetch("/api/devices");
-      if (!res.ok) { setDevError(`Error ${res.status}`); return; }
-      const data = await res.json();
-      // handle both array and {value:[]} shapes
-      setDevices(Array.isArray(data) ? data : data.value ?? []);
-    } catch (e) {
-      setDevError(`Failed to load: ${e}`);
-    }
-  }
-
-  async function deleteDevice(id: string) {
-    await fetch(`/api/devices/${id}`, { method: "DELETE" });
-    setDevices((d) => d.filter((x) => x.id !== id));
+  async function forgetComputer() {
+    if (!computer) return;
+    await fetch(`/api/computer/${computer.agentId}`, { method: "DELETE" });
+    setComputer(null);
+    setLabelInput("");
   }
 
   useEffect(() => {
-    loadDevices();
-    const t = setInterval(loadDevices, 5000);
+    loadComputer();
+    const t = setInterval(loadComputer, 5000);
     return () => clearInterval(t);
   }, []);
 
@@ -126,7 +108,7 @@ export default function Home() {
   // ── Claude chat ───────────────────────────────────────────
   // NOTE: Anthropic requires conversation starts with role "user"
   // We store the welcome as a local display-only message, not sent to the API
-  const WELCOME = "Hey — ask me anything about your hotspot, devices, or shared files.";
+  const WELCOME = "Hey — ask me anything about your computer or shared files.";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -165,10 +147,9 @@ export default function Home() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "hotspot", label: "HOTSPOT" },
-    { id: "devices", label: `DEVICES${devices.length ? ` (${devices.length})` : ""}` },
-    { id: "share",   label: `SHARE${shares.length ? ` (${shares.length})` : ""}` },
-    { id: "chat",    label: "CLAUDE" },
+    { id: "computer", label: "MY COMPUTER" },
+    { id: "share",    label: `SHARE${shares.length ? ` (${shares.length})` : ""}` },
+    { id: "chat",     label: "CLAUDE" },
   ];
 
   return (
@@ -177,9 +158,9 @@ export default function Home() {
 
       <header className="topbar">
         <span className="logo">NATIVE<span className="logo-accent">//</span>SHARE</span>
-        <span className={`hs-pill ${hotspot}`}>
+        <span className={`hs-pill ${computer?.status === "online" ? "on" : "off"}`}>
           <span className="pill-dot" />
-          {hotspot === "loading" ? "SWITCHING..." : `HOTSPOT ${hotspot.toUpperCase()}`}
+          {computer ? `${computer.status.toUpperCase()}` : "NO AGENT"}
         </span>
       </header>
 
@@ -191,50 +172,36 @@ export default function Home() {
         ))}
       </nav>
 
-      {/* ── HOTSPOT ── */}
-      {tab === "hotspot" && (
+      {/* ── MY COMPUTER ── */}
+      {tab === "computer" && (
         <section className="pane center-pane">
           <div className="hs-card">
-            <div className={`hs-ring ${hotspot}`} />
-            <span className="hs-state">
-              {hotspot === "loading" ? "SWITCHING..." : hotspot === "on" ? "ONLINE" : "OFFLINE"}
-            </span>
-            <p className="hs-sub">WiFi Hotspot · SSID: NativeShare</p>
-            <button
-              className={`hs-btn ${hotspot === "on" ? "danger" : "primary"}`}
-              onClick={toggleHotspot}
-              disabled={hotspot === "loading"}
-            >
-              {hotspot === "loading" ? "WORKING..." : hotspot === "on" ? "STOP HOTSPOT" : "START HOTSPOT"}
-            </button>
-            {hotspotResult && (
-              <pre className="hs-result">{hotspotResult}</pre>
+            {computerError && <p className="err-text">{computerError}</p>}
+            {!computer && !computerError && (
+              <p className="empty">No computer registered yet. Start the host agent.</p>
             )}
-          </div>
-        </section>
-      )}
-
-      {/* ── DEVICES ── */}
-      {tab === "devices" && (
-        <section className="pane">
-          <div className="pane-header">
-            <h2 className="pane-title">CONNECTED DEVICES</h2>
-            <button className="refresh-btn" onClick={loadDevices}>↺ REFRESH</button>
-          </div>
-          {devError && <p className="err-text">{devError}</p>}
-          {devices.length === 0 && !devError && <p className="empty">No devices connected.</p>}
-          <div className="list">
-            {devices.map((d) => (
-              <div key={d.id} className="list-row">
-                <div className="list-icon">📱</div>
-                <div className="list-body">
-                  <strong>{d.name}</strong>
-                  <small>{d.ip} · {d.mac}</small>
-                  <small>{new Date(d.connectedAt).toLocaleTimeString()}</small>
+            {computer && (
+              <>
+                <span className={`hs-pill ${computer.status === "online" ? "on" : "off"}`}>
+                  <span className="pill-dot" />
+                  {computer.status.toUpperCase()}
+                </span>
+                <div className="list-row" style={{ width: "100%", marginTop: "1rem" }}>
+                  <input
+                    className="rename-input"
+                    value={labelInput}
+                    onChange={(e) => setLabelInput(e.target.value)}
+                    placeholder="Computer name"
+                  />
+                  <button className="hs-btn primary" onClick={renameComputer} disabled={savingLabel || !labelInput.trim()}>
+                    {savingLabel ? "SAVING..." : "SAVE"}
+                  </button>
                 </div>
-                <button className="del-btn" onClick={() => deleteDevice(d.id)} title="Kick device">✕</button>
-              </div>
-            ))}
+                <p className="hs-sub">{computer.platform} · v{computer.version}</p>
+                <p className="hs-sub">Last seen {new Date(computer.lastSeenAt).toLocaleTimeString()}</p>
+                <button className="hs-btn danger" onClick={forgetComputer}>FORGET THIS COMPUTER</button>
+              </>
+            )}
           </div>
         </section>
       )}
@@ -243,7 +210,7 @@ export default function Home() {
       {tab === "share" && (
         <section className="pane">
           <h2 className="pane-title">QUICKSHARE</h2>
-          <p className="pane-sub">Drop or pick a file → instant QR link for anyone on the hotspot.</p>
+          <p className="pane-sub">Drop or pick a file → instant QR link to grab it from any device.</p>
 
           <div
             className={`drop-zone ${dragOver ? "drag-active" : ""} ${uploading ? "uploading" : ""}`}

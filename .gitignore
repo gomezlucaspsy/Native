@@ -56,3 +56,7 @@ dist/
 launcher/bin/
 launcher/obj/
 
+# local QuickShare uploads (dev-only fallback storage)
+/public/shares/*
+!/public/shares/.gitkeep
+

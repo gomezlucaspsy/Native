@@ -42,7 +42,7 @@ html, body {
 .logo { font-size: 1rem; font-weight: 700; letter-spacing: 0.12em; color: #eee; }
 .logo-accent { color: var(--green); }
 
-/* hotspot pill in header */
+/* agent status pill in header */
 .hs-pill {
   display: flex; align-items: center; gap: 0.4rem;
   font-size: 0.65rem; letter-spacing: 0.1em;
@@ -94,7 +94,7 @@ html, body {
 
 .empty { font-size: 0.78rem; color: var(--muted); }
 
-/* ── hotspot card ── */
+/* ── my computer card ── */
 .hs-card {
   display: flex; flex-direction: column; align-items: center; gap: 1rem;
   padding: 2.5rem;
@@ -102,18 +102,6 @@ html, body {
   background: var(--panel);
   width: 100%; max-width: 320px;
 }
-
-.hs-ring {
-  width: 80px; height: 80px; border-radius: 50%;
-  border: 2px solid var(--muted);
-  transition: border-color .3s, box-shadow .3s;
-}
-.hs-ring.on {
-  border-color: var(--green);
-  box-shadow: 0 0 24px var(--green-glow), inset 0 0 24px var(--green-glow);
-}
-
-.hs-state { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.12em; }
 
 .hs-sub { font-size: 0.7rem; color: var(--muted); }
 
@@ -126,6 +114,17 @@ html, body {
 .hs-btn.danger  { background: var(--red);   color: #fff; }
 .hs-btn:disabled { opacity: 0.35; cursor: default; }
 
+.rename-input {
+  flex: 1;
+  background: #0a0a0a;
+  border: 1px solid var(--border);
+  color: var(--green);
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.5rem 0.6rem;
+}
+.rename-input:focus { outline: none; border-color: var(--green); }
+
 /* ── list ── */
 .list { display: flex; flex-direction: column; gap: 0.4rem; }
 
@@ -134,8 +133,6 @@ html, body {
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border); background: var(--panel);
 }
-
-.list-icon { font-size: 1.1rem; flex-shrink: 0; }
 
 .list-body { flex: 1; min-width: 0; }
 .list-body strong { display: block; font-size: 0.85rem; }
@@ -183,40 +180,6 @@ html, body {
 }
 .browse-btn:hover { border-color: var(--green); color: var(--green); }
 .browse-btn:disabled { opacity: 0.4; cursor: default; }
-
-/* add after .hs-sub */
-.hs-result {
-  font-size: 0.68rem;
-  color: var(--green);
-  background: #0a0a0a;
-  border: 1px solid var(--border);
-  padding: 0.5rem 0.65rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 120px;
-  overflow-y: auto;
-  width: 100%;
-  text-align: left;
-}
-
-/* pane header row */
-.pane-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.refresh-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font-family: inherit;
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  padding: 0.2rem 0.5rem;
-  cursor: pointer;
-}
-.refresh-btn:hover { color: var(--green); border-color: var(--green); }
 
 /* error text */
 .err-text { font-size: 0.75rem; color: var(--red); }

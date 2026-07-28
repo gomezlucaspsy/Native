@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { put } from "@vercel/blob";
+import os from "os";
+
+function getLanIP(): string {
+  for (const ifaces of Object.values(os.networkInterfaces())) {
+    for (const addr of ifaces ?? []) {
+      if (addr.family === "IPv4" && !addr.internal) return addr.address;
+    }
+  }
+  return "localhost";
+}
 
 export interface ShareItem {
   id: string;
@@ -43,6 +53,15 @@ export async function POST(request: NextRequest) {
         token: blobToken,
       });
       fileUrl = blob.url;
+    } else if (process.env.VERCEL) {
+      // Deployed on Vercel but no Blob token wired up — the local filesystem
+      // fallback below would hit a read-only /var/task and 500 with a confusing
+      // ENOENT. Fail clearly instead so the real cause (missing/stale
+      // BLOB_READ_WRITE_TOKEN — needs a redeploy after being linked) is obvious.
+      return NextResponse.json(
+        { error: "File storage is not configured for this deployment (missing BLOB_READ_WRITE_TOKEN)." },
+        { status: 500 }
+      );
     } else {
       // ── Local filesystem ──────────────────────────────────
       const { writeFile, mkdir } = await import("fs/promises");
@@ -54,9 +73,8 @@ export async function POST(request: NextRequest) {
         path.join(uploadDir, filename),
         Buffer.from(await file.arrayBuffer())
       );
-      const host = request.headers.get("host") ?? "localhost:3000";
-      const proto = host.startsWith("localhost") ? "http" : "https";
-      fileUrl = `${proto}://${host}/shares/${filename}`;
+      const port = process.env.PORT ?? "3000";
+      fileUrl = `http://${getLanIP()}:${port}/shares/${filename}`;
     }
 
     const qr = await QRCode.toDataURL(fileUrl, {

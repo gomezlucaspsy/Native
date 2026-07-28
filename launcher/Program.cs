@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
@@ -9,14 +11,16 @@ static class Program
     static NotifyIcon? _tray;
     static Process?    _web;
     static Process?    _agent;
-    static readonly string Root  = FindRoot();
-    static readonly string Port  = "3000";
-    static readonly string Url   = $"http://localhost:{Port}";
+
+    static readonly string Root       = FindRoot();
+    static readonly string Port       = "3000";
+    static readonly string LocalUrl   = $"http://localhost:{Port}";
+    static readonly string LanIP      = GetLanIP();
+    static readonly string NetworkUrl = $"http://{LanIP}:{Port}";
 
     [STAThread]
     static void Main()
     {
-        // Only one instance
         var mutex = new Mutex(true, "NativeShareLauncher", out bool first);
         if (!first) { OpenBrowser(); return; }
 
@@ -25,87 +29,163 @@ static class Program
         BuildTray();
         StartWeb();
         StartAgent();
+        CreateShortcuts();
 
-        // Open browser once web is ready
         Task.Run(WaitAndOpenBrowser);
-
         Application.Run();
 
         mutex.ReleaseMutex();
     }
 
-    // ── Tray ────────────────────────────────────────────────────────────────
+    // ── Tray ─────────────────────────────────────────────────────────────────
+
     static void BuildTray()
     {
-        var icon = LoadIcon();
-
         _tray = new NotifyIcon
         {
-            Icon    = icon,
+            Icon    = LoadIcon(),
             Text    = "Native Share",
             Visible = true,
         };
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open Dashboard",  null, (_, _) => OpenBrowser());
-        menu.Items.Add("Open Hotspot",    null, (_, _) => OpenBrowser("/"));
+        menu.Items.Add("Open App",         null, (_, _) => OpenBrowser());
+        menu.Items.Add("Copy Network URL", null, (_, _) => Clipboard.SetText(NetworkUrl));
         menu.Items.Add("-");
-        menu.Items.Add("Restart Services", null, (_, _) => { StopAll(); StartWeb(); StartAgent(); });
+        menu.Items.Add("Restart",          null, (_, _) => { StopAll(); StartWeb(); StartAgent(); });
         menu.Items.Add("-");
-        menu.Items.Add("Exit", null, (_, _) => Exit());
+        menu.Items.Add("Exit",             null, (_, _) => Exit());
 
         _tray.ContextMenuStrip = menu;
-        _tray.DoubleClick += (_, _) => OpenBrowser();
-
-        _tray.ShowBalloonTip(3000, "Native Share", "Starting… click the tray icon to open.", ToolTipIcon.Info);
+        _tray.DoubleClick     += (_, _) => OpenBrowser();
+        _tray.ShowBalloonTip(3000, "Native Share", $"Starting…  {NetworkUrl}", ToolTipIcon.Info);
     }
 
     static Icon LoadIcon()
     {
-        // Try embedded resource first, fallback to file
-        var asm = Assembly.GetExecutingAssembly();
+        // 1. Embedded resource
+        var asm  = Assembly.GetExecutingAssembly();
         var name = asm.GetManifestResourceNames()
                       .FirstOrDefault(n => n.EndsWith("icon.ico", StringComparison.OrdinalIgnoreCase));
         if (name != null)
+            try { using var s = asm.GetManifestResourceStream(name)!; return new Icon(s); } catch { }
+
+        // 2. File next to launcher source
+        var file = Path.Combine(Root, "launcher", "icon.ico");
+        if (File.Exists(file))
+            try { return new Icon(file); } catch { }
+
+        // 3. Programmatic fallback — green circle on dark background
+        var bmp = new Bitmap(32, 32);
+        using (var g = Graphics.FromImage(bmp))
         {
-            using var stream = asm.GetManifestResourceStream(name)!;
-            return new Icon(stream);
+            g.Clear(Color.FromArgb(9, 11, 16));
+            g.FillEllipse(new SolidBrush(Color.FromArgb(57, 255, 20)), 4, 4, 24, 24);
+        }
+        return Icon.FromHandle(bmp.GetHicon());
+    }
+
+    // ── Shortcuts — COM late binding, no external tools ───────────────────────
+    //
+    // Creates both a Desktop and a Start Menu shortcut, pointed at the running
+    // exe with its embedded icon. Failures are logged (not swallowed) to
+    // dist/install.log so a broken shortcut is diagnosable instead of just
+    // silently missing.
+
+    static void CreateShortcuts()
+    {
+        var exe = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrEmpty(exe))
+        {
+            LogInstall("CreateShortcuts: could not resolve the running exe path — skipped");
+            return;
         }
 
-        var file = Path.Combine(Root, "launcher", "icon.ico");
-        if (File.Exists(file)) return new Icon(file);
+        var desktop   = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Native Share.lnk");
+        var startMenu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", "Native Share.lnk");
 
-        return SystemIcons.Application;
+        CreateShortcut(desktop, exe);
+        CreateShortcut(startMenu, exe);
     }
 
-    // ── Web (Next.js) ───────────────────────────────────────────────────────
+    static void CreateShortcut(string lnkPath, string exe)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(lnkPath)!);
+
+            var shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new Exception("WScript.Shell COM type not found");
+            var shell     = Activator.CreateInstance(shellType)!;
+            var sc        = shell.GetType().InvokeMember("CreateShortcut",
+                                BindingFlags.InvokeMethod, null, shell, new object[] { lnkPath })!;
+            var t = sc.GetType();
+            t.InvokeMember("TargetPath",       BindingFlags.SetProperty, null, sc, new object[] { exe });
+            t.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { Root });
+            t.InvokeMember("IconLocation",     BindingFlags.SetProperty, null, sc, new object[] { $"{exe},0" });
+            t.InvokeMember("Description",      BindingFlags.SetProperty, null, sc, new object[] { "Native Share — QuickShare & Claude AI" });
+            t.InvokeMember("Save",             BindingFlags.InvokeMethod, null, sc, null);
+
+            LogInstall($"Shortcut OK: {lnkPath} -> {exe}");
+        }
+        catch (Exception ex)
+        {
+            LogInstall($"Shortcut FAILED: {lnkPath} :: {ex}");
+        }
+    }
+
+    static void LogInstall(string message)
+    {
+        try
+        {
+            var dir = Path.Combine(Root, "dist");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "install.log"), $"[{DateTime.Now:u}] {message}\n");
+        }
+        catch { /* logging itself must never crash the launcher */ }
+    }
+
+    // ── Web server ───────────────────────────────────────────────────────────
+
     static void StartWeb()
     {
-        KillPort(3000);
-
-        var logPath = Path.Combine(Root, "dist", "web.log");
-        File.WriteAllText(logPath, $"[{DateTime.Now}] Starting Next.js in {Root}\n");
-
-        // Use cmd /c to ensure PATH is fully resolved in the shell
-        var psi = new ProcessStartInfo("cmd.exe")
+        try
         {
-            Arguments        = $"/c \"cd /d \"{Root}\" && npx next dev --hostname 0.0.0.0 --port {Port} >> \"{logPath}\" 2>&1\"",
-            UseShellExecute  = false,
-            CreateNoWindow   = true,
-            WorkingDirectory = Root,
-        };
+            KillPort(3000);
 
-        // Inject env vars via cmd SET
-        psi.Environment["HOST_AGENT_TOKEN"] = "native-dev-token";
-        LoadDotEnv(Path.Combine(Root, ".env.local"), psi);
+            var logPath = Path.Combine(Root, "dist", "web.log");
+            Directory.CreateDirectory(Path.Combine(Root, "dist"));
+            File.WriteAllText(logPath, $"[{DateTime.Now}] Starting Next.js in {Root}\n");
 
-        _web = Process.Start(psi);
+            var psi = new ProcessStartInfo("cmd.exe")
+            {
+                Arguments        = $"/c \"cd /d \"{Root}\" && npm run dev -- --hostname 0.0.0.0 --port {Port} >> \"{logPath}\" 2>&1\"",
+                UseShellExecute  = false,
+                CreateNoWindow   = true,
+                WorkingDirectory = Root,
+            };
+
+            // Merge machine + user PATH so npm/node are found when launched from a shortcut
+            var sys  = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
+            var user = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)    ?? "";
+            psi.Environment["PATH"] = $"{sys};{user}";
+
+            psi.Environment["HOST_AGENT_TOKEN"] = "native-dev-token";
+            LoadDotEnv(Path.Combine(Root, ".env.local"), psi);
+
+            _web = Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            // Never let this take down the whole launcher — WaitAndOpenBrowser will
+            // just keep polling port 3000 and time out gracefully if it never comes up.
+            LogInstall($"StartWeb FAILED: {ex}");
+        }
     }
 
-    static void LoadDotEnv(string path, ProcessStartInfo psi)
+    static void LoadDotEnv(string envPath, ProcessStartInfo psi)
     {
-        if (!File.Exists(path)) return;
-        foreach (var line in File.ReadAllLines(path))
+        if (!File.Exists(envPath)) return;
+        foreach (var line in File.ReadAllLines(envPath))
         {
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
             var idx = line.IndexOf('=');
@@ -117,71 +197,82 @@ static class Program
         }
     }
 
-    // ── Agent (C#) ──────────────────────────────────────────────────────────
+    // ── Host agent ───────────────────────────────────────────────────────────
+
     static void StartAgent()
     {
-        // Try pre-built Release exe first, fall back to dotnet run
-        var exe = Path.Combine(Root, "host-agent", "bin", "Release", "net8.0", "host-agent.exe");
-
-        ProcessStartInfo psi;
-
-        if (File.Exists(exe))
+        try
         {
-            psi = new ProcessStartInfo
+            var exe = Path.Combine(Root, "host-agent", "bin", "Release", "net8.0-windows10.0.19041.0", "host-agent.exe");
+
+            ProcessStartInfo psi = File.Exists(exe)
+                ? new ProcessStartInfo { FileName = exe, UseShellExecute = true,
+                                         WorkingDirectory = Path.Combine(Root, "host-agent") }
+                : new ProcessStartInfo { FileName = "dotnet",
+                                         Arguments = "run --project host-agent/host-agent.csproj -c Release",
+                                         WorkingDirectory = Root, UseShellExecute = false, CreateNoWindow = true };
+
+            // host-agent.exe carries a requireAdministrator manifest, so the built-exe
+            // branch above needs UseShellExecute = true to trigger the UAC prompt — and
+            // .NET forbids setting Environment on a ShellExecute'd process. AgentConfig's
+            // built-in defaults already match these values, so just skip them there.
+            if (!psi.UseShellExecute)
             {
-                FileName         = exe,
-                UseShellExecute  = true,   // keeps it elevated via manifest
-                CreateNoWindow   = false,
-                WorkingDirectory = Path.Combine(Root, "host-agent"),
-            };
+                psi.Environment["CONTROL_PLANE_URL"]             = LocalUrl;
+                psi.Environment["HOST_AGENT_TOKEN"]              = "native-dev-token";
+                psi.Environment["HOST_AGENT_ID"]                 = "host-main";
+                psi.Environment["HOST_AGENT_LABEL"]              = "Main Host";
+                psi.Environment["HOST_AGENT_POLL_INTERVAL_SECS"] = "5";
+            }
+
+            _agent = Process.Start(psi);
         }
-        else
+        catch (Exception ex)
         {
-            psi = new ProcessStartInfo
-            {
-                FileName               = "dotnet",
-                Arguments              = "run --project host-agent/host-agent.csproj -c Release",
-                WorkingDirectory       = Root,
-                UseShellExecute        = false,
-                CreateNoWindow         = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError  = true,
-            };
+            // Never let a host-agent failure (e.g. UAC declined) take down the whole
+            // launcher — the web app and browser should still come up without it.
+            LogInstall($"StartAgent FAILED: {ex}");
         }
-
-        psi.Environment["CONTROL_PLANE_URL"]            = Url;
-        psi.Environment["HOST_AGENT_TOKEN"]             = "native-dev-token";
-        psi.Environment["HOST_AGENT_ID"]                = "host-main";
-        psi.Environment["HOST_AGENT_LABEL"]             = "Main Host";
-        psi.Environment["HOST_AGENT_POLL_INTERVAL_SECS"] = "5";
-
-        _agent = Process.Start(psi);
     }
 
-    // ── Browser ─────────────────────────────────────────────────────────────
+    // ── Browser ──────────────────────────────────────────────────────────────
+
     static async Task WaitAndOpenBrowser()
     {
-        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        for (int i = 0; i < 45; i++)
+        // TCP check: wait until port 3000 accepts connections
+        for (int i = 0; i < 30; i++)
         {
             await Task.Delay(2000);
             try
             {
-                var r = await http.GetAsync($"{Url}/api/status");
-                if (r.IsSuccessStatusCode) { OpenBrowser(); return; }
+                using var tcp = new TcpClient();
+                await tcp.ConnectAsync("127.0.0.1", int.Parse(Port));
+                break; // success — server is up
             }
             catch { }
         }
-        // Timed out — open anyway
+
         OpenBrowser();
     }
 
     static void OpenBrowser(string path = "/")
     {
-        Process.Start(new ProcessStartInfo($"{Url}{path}") { UseShellExecute = true });
+        var url = $"{LocalUrl}{path}";
+        // explorer.exe always opens URLs in the default browser — most reliable on Windows
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", url) { UseShellExecute = false });
+            return;
+        }
+        catch { }
+
+        // Fallback
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { }
     }
 
-    // ── Cleanup ─────────────────────────────────────────────────────────────
+    // ── Cleanup ──────────────────────────────────────────────────────────────
+
     static void StopAll()
     {
         TryKill(_web);
@@ -198,7 +289,7 @@ static class Program
 
     static void TryKill(Process? p)
     {
-        try { if (p != null && !p.HasExited) { p.Kill(true); p.WaitForExit(3000); } }
+        try { if (p is { HasExited: false }) { p.Kill(true); p.WaitForExit(3000); } }
         catch { }
     }
 
@@ -206,37 +297,34 @@ static class Program
     {
         try
         {
-            var psi = new ProcessStartInfo("cmd", $"/c for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :{port}') do taskkill /F /PID %a")
-            { UseShellExecute = false, CreateNoWindow = true };
-            using var p = Process.Start(psi);
-            p?.WaitForExit(3000);
+            Process.Start(new ProcessStartInfo("cmd.exe",
+                $"/c for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :{port}') do taskkill /F /PID %a")
+            { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(3000);
         }
         catch { }
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
-    static void CopyEnvVar(ProcessStartInfo psi, string key)
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    static string GetLanIP()
     {
-        var val = Environment.GetEnvironmentVariable(key);
-        if (!string.IsNullOrEmpty(val)) psi.Environment[key] = val;
+        foreach (var iface in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (iface.OperationalStatus != OperationalStatus.Up) continue;
+            foreach (var addr in iface.GetIPProperties().UnicastAddresses)
+                if (addr.Address.AddressFamily == AddressFamily.InterNetwork
+                    && !System.Net.IPAddress.IsLoopback(addr.Address))
+                    return addr.Address.ToString();
+        }
+        return "localhost";
     }
 
     static string FindRoot()
     {
-        // For single-file exe, AppContext.BaseDirectory is a temp extraction dir.
-        // Use the exe's actual location instead.
         var exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? AppContext.BaseDirectory)
                      ?? AppContext.BaseDirectory;
-
-        // Walk up looking for package.json (Next.js root marker)
-        var dir = exeDir;
-        while (dir != null)
-        {
+        for (var dir = exeDir; dir != null; dir = Path.GetDirectoryName(dir))
             if (File.Exists(Path.Combine(dir, "package.json"))) return dir;
-            dir = Path.GetDirectoryName(dir);
-        }
-
-        // Fallback: exe is in dist/ inside the project root
         return Path.GetFullPath(Path.Combine(exeDir, ".."));
     }
 }

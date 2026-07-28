@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
         agentId?: string;
-        type?: "scan_devices" | "start_hotspot" | "stop_hotspot" | "sync_media";
+        type?: "sync_media";
         payload?: Record<string, unknown>;
       }
     | null;

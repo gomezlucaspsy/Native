@@ -17,7 +17,7 @@
 
     <Company>Native Share</Company>
     <Product>Native Share</Product>
-    <Description>WiFi Hotspot Manager with QuickShare and Claude AI</Description>
+    <Description>QuickShare file transfer with Claude AI</Description>
     <FileVersion>1.0.0</FileVersion>
     <AssemblyVersion>1.0.0</AssemblyVersion>
   </PropertyGroup>

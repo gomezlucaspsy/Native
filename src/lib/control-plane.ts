@@ -1,8 +1,4 @@
-export type CommandType =
-  | "scan_devices"
-  | "start_hotspot"
-  | "stop_hotspot"
-  | "sync_media";
+export type CommandType = "sync_media";
 
 export type CommandStatus = "queued" | "dispatched" | "completed" | "failed";
 
@@ -97,6 +93,23 @@ export function heartbeatAgent(agentId: string): AgentState | null {
   return updated;
 }
 
+export function renameAgent(agentId: string, label: string): AgentState | null {
+  const agent = store.agents.get(agentId);
+  if (!agent) {
+    return null;
+  }
+
+  const updated = updateAgentStatus({ ...agent, label });
+  store.agents.set(agentId, updated);
+  return updated;
+}
+
+export function removeAgent(agentId: string): boolean {
+  const existed = store.agents.delete(agentId);
+  store.commands.delete(agentId);
+  return existed;
+}
+
 export function enqueueCommand(input: {
   agentId: string;
   type: CommandType;
@@ -171,16 +184,10 @@ export function seedDemoAgentIfEmpty() {
     return;
   }
 
-  const demo = upsertAgent({
+  upsertAgent({
     agentId: "host-main",
     label: "Main Host",
     platform: "windows",
     version: "0.1.0",
-  });
-
-  enqueueCommand({
-    agentId: demo.agentId,
-    type: "scan_devices",
-    payload: { reason: "bootstrap" },
   });
 }

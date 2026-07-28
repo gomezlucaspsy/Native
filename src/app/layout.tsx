@@ -15,7 +15,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "Native Share",
-  description: "WiFi hotspot manager with QuickShare and Claude AI.",
+  description: "QuickShare file transfer with Claude AI.",
   applicationName: "Native Share",
   manifest: "/manifest.webmanifest",
 };

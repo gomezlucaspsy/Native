@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       model: "claude-haiku-4-5",
       max_tokens: 1024,
       system:
-        "You are a WiFi hotspot assistant built into Native Share. You help the user manage their hotspot, see connected devices, and share files via QR code. Be concise and practical.",
+        "You are the assistant built into Native Share. You help the user check on their computer's status and share files via QR code. Be concise and practical.",
       messages: apiMessages,
     });
 
