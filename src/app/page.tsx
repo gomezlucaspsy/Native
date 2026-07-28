@@ -180,9 +180,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: next,
           filesTree: fsTree(fsLoad()),
-          sharesTree: shares.length
-            ? shares.map((s) => `${s.name} (${(s.size / 1024).toFixed(1)} KB) → ${s.url}`).join("\n")
-            : "(no shared files yet)",
+          shares: shares.map((s) => ({ name: s.name, size: s.size, url: s.url })),
         }),
       });
       if (!res.ok) {
