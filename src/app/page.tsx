@@ -14,9 +14,19 @@ type Agent = {
   lastSeenAt: string;
   status: "online" | "offline";
 };
+type Device = {
+  deviceId: string;
+  label: string;
+  kind: string;
+  lastSeenAt: string;
+  status: "online" | "offline";
+};
+type GoogleStatus = { configured: boolean; connected: boolean; email?: string };
 type Message = { role: "user" | "assistant"; text: string };
-type Tab = "computer" | "share" | "chat";
-type ShareFile = { id: string; name: string; size: number; url: string; qr: string; createdAt: string };
+type Tab = "computer" | "share" | "chat" | "connect";
+type ShareFile = { id: string; name: string; size: number; url: string; qr: string; createdAt: string; driveUrl?: string };
+
+const DEVICE_ID_KEY = "native-device-id";
 
 // Claude replies can end with a fenced ```file-action {...}``` block to create,
 // update, or delete an entry in the sandboxed "computer" filesystem. Parse it
@@ -83,11 +93,115 @@ export default function Home() {
     return () => clearInterval(t);
   }, []);
 
+  // ── Connect Devices ──────────────────────────────────────
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [devicesError, setDevicesError] = useState("");
+  const [pairUrl, setPairUrl] = useState("");
+  const [pairQr, setPairQr] = useState("");
+  const [renamingDevice, setRenamingDevice] = useState<string | null>(null);
+  const [deviceLabelInput, setDeviceLabelInput] = useState("");
+
+  async function loadDevices() {
+    try {
+      const res = await fetch("/api/control/state");
+      if (!res.ok) { setDevicesError(`Error ${res.status}`); return; }
+      const data = await res.json() as { devices: Device[] };
+      setDevices(data.devices ?? []);
+      setDevicesError("");
+    } catch (e) {
+      setDevicesError(`Failed to load: ${e}`);
+    }
+  }
+
+  async function loadPairQr() {
+    const res = await fetch("/api/device/pair-qr");
+    if (res.ok) {
+      const data = await res.json() as { url: string; qr: string };
+      setPairUrl(data.url);
+      setPairQr(data.qr);
+    }
+  }
+
+  async function saveDeviceLabel(deviceId: string) {
+    if (!deviceLabelInput.trim()) return;
+    const res = await fetch(`/api/device/${deviceId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label: deviceLabelInput.trim() }),
+    });
+    if (res.ok) {
+      const updated = await res.json() as Device;
+      setDevices((list) => list.map((d) => (d.deviceId === deviceId ? updated : d)));
+    }
+    setRenamingDevice(null);
+  }
+
+  async function forgetDevice(deviceId: string) {
+    await fetch(`/api/device/${deviceId}`, { method: "DELETE" });
+    setDevices((list) => list.filter((d) => d.deviceId !== deviceId));
+    if (localStorage.getItem(DEVICE_ID_KEY) === deviceId) {
+      localStorage.removeItem(DEVICE_ID_KEY);
+    }
+  }
+
+  useEffect(() => {
+    loadDevices();
+    loadPairQr();
+    const t = setInterval(loadDevices, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  // if this browser was previously paired (via /pair), keep it heartbeating
+  // so it shows up online in the devices list while this tab is open
+  useEffect(() => {
+    const deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) return;
+
+    const beat = () => fetch("/api/device/heartbeat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceId }),
+    }).catch(() => {});
+
+    beat();
+    const t = setInterval(beat, 15000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── Google account ───────────────────────────────────────
+  const [google, setGoogle] = useState<GoogleStatus>({ configured: false, connected: false });
+  const [googleMsg, setGoogleMsg] = useState("");
+
+  async function loadGoogleStatus() {
+    const res = await fetch("/api/google/status");
+    if (res.ok) setGoogle(await res.json());
+  }
+
+  async function disconnectGoogle() {
+    await fetch("/api/google/disconnect", { method: "POST" });
+    loadGoogleStatus();
+  }
+
+  useEffect(() => {
+    loadGoogleStatus();
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("google");
+    if (result === "connected") setGoogleMsg("Google account connected.");
+    if (result === "error") setGoogleMsg("Google connection failed — check GOOGLE_CLIENT_ID/SECRET and try again.");
+    if (result) {
+      setTab("connect");
+      params.delete("google");
+      const q = params.toString();
+      window.history.replaceState({}, "", q ? `/?${q}` : "/");
+    }
+  }, []);
+
   // ── QuickShare ────────────────────────────────────────────
   const [shares, setShares] = useState<ShareFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [sendToDrive, setSendToDrive] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function uploadFile(file: File) {
@@ -96,6 +210,7 @@ export default function Home() {
     try {
       const form = new FormData();
       form.append("file", file);
+      if (sendToDrive && google.connected) form.append("toDrive", "1");
       const res = await fetch("/api/share", { method: "POST", body: form });
       if (!res.ok) { setUploadError(`Upload failed: HTTP ${res.status}`); return; }
       const item = await res.json() as ShareFile;
@@ -176,6 +291,7 @@ export default function Home() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "computer", label: "MY COMPUTER" },
     { id: "share",    label: `SHARE${shares.length ? ` (${shares.length})` : ""}` },
+    { id: "connect",  label: `CONNECT${devices.length ? ` (${devices.length})` : ""}` },
     { id: "chat",     label: "CLAUDE" },
   ];
 
@@ -283,6 +399,13 @@ export default function Home() {
 
           {uploadError && <p className="err-text">{uploadError}</p>}
 
+          {google.connected && (
+            <label className="drive-toggle">
+              <input type="checkbox" checked={sendToDrive} onChange={(e) => setSendToDrive(e.target.checked)} />
+              Also send to Google Drive ({google.email})
+            </label>
+          )}
+
           <div className="list">
             {shares.length === 0 && <p className="empty">No shared files yet.</p>}
             {shares.map((s) => (
@@ -300,9 +423,85 @@ export default function Home() {
                 <div className="share-meta">
                   <small>{(s.size / 1024).toFixed(1)} KB · {new Date(s.createdAt).toLocaleTimeString()}</small>
                   <a className="share-link" href={s.url} target="_blank" rel="noreferrer">{s.url}</a>
+                  {s.driveUrl && (
+                    <a className="share-link" href={s.driveUrl} target="_blank" rel="noreferrer">Drive: {s.driveUrl}</a>
+                  )}
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── CONNECT ── */}
+      {tab === "connect" && (
+        <section className="pane">
+          <h2 className="pane-title">CONNECT DEVICES</h2>
+          <p className="pane-sub">Scan this on a phone to pair it — it will show up below and can send/grab files here anytime.</p>
+
+          {pairQr && (
+            <div className="qr-wrap">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={pairQr} alt="Pairing QR code" className="qr-img" />
+            </div>
+          )}
+          {pairUrl && <p className="hs-sub" style={{ textAlign: "center" }}>{pairUrl}</p>}
+
+          {devicesError && <p className="err-text">{devicesError}</p>}
+
+          <div className="list">
+            {devices.length === 0 && <p className="empty">No devices paired yet.</p>}
+            {devices.map((d) => (
+              <div key={d.deviceId} className="list-row">
+                <span className={`hs-pill ${d.status === "online" ? "on" : "off"}`}>
+                  <span className="pill-dot" />
+                </span>
+                <div className="list-body">
+                  {renamingDevice === d.deviceId ? (
+                    <input
+                      className="rename-input"
+                      autoFocus
+                      value={deviceLabelInput}
+                      onChange={(e) => setDeviceLabelInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveDeviceLabel(d.deviceId); if (e.key === "Escape") setRenamingDevice(null); }}
+                      onBlur={() => saveDeviceLabel(d.deviceId)}
+                    />
+                  ) : (
+                    <>
+                      <strong
+                        onClick={() => { setRenamingDevice(d.deviceId); setDeviceLabelInput(d.label); }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {d.label}
+                      </strong>
+                      <small>{d.kind} · last seen {new Date(d.lastSeenAt).toLocaleTimeString()}</small>
+                    </>
+                  )}
+                </div>
+                <button className="del-btn" onClick={() => forgetDevice(d.deviceId)}>FORGET</button>
+              </div>
+            ))}
+          </div>
+
+          <h2 className="pane-title" style={{ marginTop: "0.5rem" }}>ACCOUNTS</h2>
+          {googleMsg && <p className="hs-sub">{googleMsg}</p>}
+          <div className="list-row">
+            <div className="list-body">
+              <strong>Google Drive</strong>
+              <small>{google.connected ? `Connected as ${google.email}` : google.configured ? "Not connected" : "Not configured on this deployment"}</small>
+            </div>
+            {google.connected ? (
+              <button className="del-btn" onClick={disconnectGoogle}>DISCONNECT</button>
+            ) : (
+              <a
+                className={`hs-btn primary ${!google.configured ? "disabled-link" : ""}`}
+                style={{ width: "auto", textDecoration: "none", padding: "0.5rem 1rem" }}
+                href={google.configured ? "/api/google/auth" : undefined}
+                aria-disabled={!google.configured}
+              >
+                CONNECT
+              </a>
+            )}
           </div>
         </section>
       )}

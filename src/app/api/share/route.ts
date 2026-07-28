@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { put } from "@vercel/blob";
-import os from "os";
-
-function getLanIP(): string {
-  for (const ifaces of Object.values(os.networkInterfaces())) {
-    for (const addr of ifaces ?? []) {
-      if (addr.family === "IPv4" && !addr.internal) return addr.address;
-    }
-  }
-  return "localhost";
-}
+import { getLanIP } from "@/lib/network";
+import { getConnection, uploadFileToDrive } from "@/lib/google-auth";
 
 export interface ShareItem {
   id: string;
@@ -19,6 +11,7 @@ export interface ShareItem {
   url: string;
   qr: string;
   createdAt: string;
+  driveUrl?: string;
 }
 
 declare global {
@@ -84,6 +77,18 @@ export async function POST(request: NextRequest) {
       color: { dark: "#39ff14", light: "#0a0a0a" },
     });
 
+    let driveUrl: string | undefined;
+    const wantsDrive = form.get("toDrive") === "1";
+    if (wantsDrive && getConnection().connected) {
+      try {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const uploaded = await uploadFileToDrive(buffer, file.name, file.type || "application/octet-stream");
+        driveUrl = uploaded.webViewLink;
+      } catch (err) {
+        console.error("Drive upload error:", err);
+      }
+    }
+
     const item: ShareItem = {
       id,
       name: file.name,
@@ -91,6 +96,7 @@ export async function POST(request: NextRequest) {
       url: fileUrl,
       qr,
       createdAt: new Date().toISOString(),
+      driveUrl,
     };
 
     shares.unshift(item);

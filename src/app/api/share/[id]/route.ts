@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ShareItem } from "../route";
 
 declare global {
-  var nativeShares: { id: string; name: string; size: number; url: string; qr: string; createdAt: string }[] | undefined;
+  var nativeShares: ShareItem[] | undefined;
 }
 
 export async function DELETE(

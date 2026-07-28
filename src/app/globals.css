@@ -213,6 +213,16 @@ html, body {
 .browse-btn:hover { border-color: var(--green); color: var(--green); }
 .browse-btn:disabled { opacity: 0.4; cursor: default; }
 
+/* ── connect: devices + accounts ── */
+.drive-toggle {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.72rem; color: var(--muted);
+  cursor: pointer;
+}
+.drive-toggle input { accent-color: var(--green); }
+
+.disabled-link { opacity: 0.35; pointer-events: none; }
+
 /* error text */
 .err-text { font-size: 0.75rem; color: var(--red); }
 

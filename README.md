@@ -39,7 +39,8 @@ failures are logged to `dist/install.log` instead of failing silently.
 | Tab | Feature | How |
 |---|---|---|
 | **MY COMPUTER** | See the host agent's online/offline status, rename it, or forget it. Also has a **Virtual Files** panel — a sandboxed file system (files/folders, an editor with Ctrl+S) stored in the browser, which Claude can read and write to as well | Agent status is CRUD over the agent record: create+read via register/heartbeat, update (rename) via `PUT /api/computer/:id`, delete (forget) via `DELETE /api/computer/:id`. Virtual Files lives entirely in `localStorage` (`src/lib/virtual-fs.ts`) |
-| **QUICKSHARE** | Drag-drop any file → QR code + direct link | Saved to disk locally, Vercel Blob in production |
+| **QUICKSHARE** | Drag-drop any file → QR code + direct link. Optionally also push the same file to Google Drive if connected | Saved to disk locally, Vercel Blob in production; Drive copy via `uploadFileToDrive()` |
+| **CONNECT** | Pair a phone (or any browser) by scanning a QR code — it shows up in a persistent, renameable "devices" list (online/offline like My Computer). Also where you connect a Google account for the Drive hand-off above | QR encodes `/pair`, which registers a `deviceId` (stored in the phone's `localStorage`) via `POST /api/device/register`, then heartbeats every 15s while a tab is open. Google is a standard OAuth2 authorization-code flow against `/api/google/auth` → `/api/google/callback` |
 | **CLAUDE** | Chat assistant aware of the host computer, shared files, and the Virtual Files tree — can create/update/delete virtual files on request | Anthropic `claude-haiku-4-5` via `/api/ai/chat` |
 | **GITHUB ↗** | Opens the [source repo](https://github.com/gomezlucaspsy/Native) in a new tab — releases, issues, downloads | Plain external link, not an app tab |
 
@@ -93,12 +94,26 @@ Native/
 │   │       │   ├── heartbeat/    POST  — agent keepalive (45s timeout)
 │   │       │   ├── commands/     GET (agent polls) / POST (UI enqueues)
 │   │       │   └── command-result/ POST  — agent reports outcome
+│   │       ├── device/
+│   │       │   ├── register/     POST  — phone/browser pairs itself (from /pair)
+│   │       │   ├── heartbeat/    POST  — paired device keepalive (30s timeout)
+│   │       │   ├── [id]/         PUT/DELETE  — rename / forget a paired device
+│   │       │   └── pair-qr/      GET   — QR code + URL for the CONNECT tab
+│   │       ├── google/
+│   │       │   ├── auth/         GET  — redirects to Google's OAuth consent screen
+│   │       │   ├── callback/     GET  — exchanges code for tokens, stores connection
+│   │       │   ├── status/       GET  — { configured, connected, email }
+│   │       │   └── disconnect/   POST — clears the stored Google connection
 │   │       └── control/
-│   │           └── state/        GET  — full snapshot: agents + commands
+│   │           └── state/        GET  — full snapshot: agents + commands + devices
+│   ├── pair/
+│   │   └── page.tsx              ← Device pairing landing page (scanned via CONNECT QR)
 │   ├── components/
 │   │   └── FileExplorer.tsx      ← Virtual Files UI (breadcrumbs, list, editor pane)
 │   └── lib/
-│       ├── control-plane.ts      ← In-memory store (globalThis singleton)
+│       ├── control-plane.ts      ← In-memory store (globalThis singleton) — agents + devices
+│       ├── google-auth.ts        ← Hand-rolled Google OAuth2 + Drive upload (no googleapis dep)
+│       ├── network.ts            ← LAN IP / shareable-origin helpers (used by QuickShare + pairing QR)
 │       └── virtual-fs.ts         ← Virtual Files data model — localStorage-backed
 │
 ├── host-agent/                   C# .NET 8 — Windows host agent ("My Computer")
@@ -142,10 +157,11 @@ Native/
 **Runtime:** Node.js (Vercel serverless or local dev server)
 
 #### `src/app/page.tsx` — UI
-Single React component, no external UI library. Three tab views controlled by `useState<Tab>`, plus a fourth nav item (**GITHUB ↗**) that's a plain external `<a>` to the repo rather than a tab.
+Single React component, no external UI library. Four tab views controlled by `useState<Tab>`, plus a fifth nav item (**GITHUB ↗**) that's a plain external `<a>` to the repo rather than a tab.
 
 - **My Computer tab** — reads the registered host agent from `GET /api/control/state` (polled every 5 s), shows an online/offline pill derived from `lastSeenAt`. Rename via `PUT /api/computer/:id`, forget via `DELETE /api/computer/:id` (the agent re-registers on its next heartbeat, since a 404 heartbeat triggers `RegisterAsync()` again on the C# side). Also renders `<FileExplorer>` — the **Virtual Files** panel.
-- **Share tab** — `FormData` POST to `/api/share`, receives `{ url, qr }` back. Renders the QR as an `<img src={dataUrl}>`. Drag-and-drop via `onDrop` + a separate BROWSE button (separate to avoid click conflicts).
+- **Share tab** — `FormData` POST to `/api/share`, receives `{ url, qr }` back. Renders the QR as an `<img src={dataUrl}>`. Drag-and-drop via `onDrop` + a separate BROWSE button (separate to avoid click conflicts). If Google Drive is connected, an extra checkbox sends `toDrive=1` in the same form.
+- **Connect tab** — shows the pairing QR (`GET /api/device/pair-qr`) and the live devices list (from `GET /api/control/state`, polled every 5 s), plus the Google account row (`GET /api/google/status`). Renaming a device is inline (click the label → input → Enter/blur to save), same interaction as My Computer's rename.
 - **Claude tab** — Builds a `Message[]` array (user-first enforced), sends to `/api/ai/chat` along with `fsTree(fsLoad())` as extra context. If the reply ends with a fenced `` ```file-action `` JSON block, `extractFileAction()` strips it from the displayed text and applies it to the Virtual Files store.
 
 #### `src/lib/virtual-fs.ts` + `src/components/FileExplorer.tsx` — Virtual Files
@@ -160,7 +176,8 @@ In-memory store using a `globalThis.nativeControlPlaneStore` singleton so it sur
 - `enqueueCommand(input)` — creates a queued command, returns it
 - `dispatchPendingCommands(agentId)` — returns queued commands and marks them `dispatched`
 - `completeCommand(...)` — marks command `completed` or `failed`, stores result string
-- `snapshotState()` — returns all agents + all commands flattened, used by `/api/control/state`
+- `registerDevice(input)` / `heartbeatDevice(deviceId)` / `renameDevice(...)` / `removeDevice(...)` — same CRUD shape as the agent functions, but for paired phones/browsers (30s offline window instead of 45s)
+- `snapshotState()` — returns all agents + all commands + all devices flattened, used by `/api/control/state`
 
 #### `src/app/api/share/route.ts` — QuickShare storage strategy
 Detects `process.env.BLOB_READ_WRITE_TOKEN` at runtime:
@@ -179,6 +196,23 @@ Model: `claude-haiku-4-5` (cheapest Anthropic model, sufficient for these assist
 #### `src/app/api/computer/[id]/route.ts` — "My Computer" CRUD
 - `PUT { label }` — renames the agent record (`renameAgent`)
 - `DELETE` — forgets the agent (`removeAgent`); the host agent transparently re-registers itself on its next heartbeat tick, since a 404 from `/api/agent/heartbeat` makes the C# side call `RegisterAsync()` again
+
+#### `src/app/pair/page.tsx` + `src/lib/control-plane.ts` (devices) — Connect Devices
+The CONNECT tab shows a QR code (from `GET /api/device/pair-qr`) encoding `<shareable-origin>/pair`. Scanning it on a phone opens `/pair`, which:
+1. Reads/creates a `deviceId` (`crypto.randomUUID()`) in the phone's `localStorage` (`native-device-id`)
+2. Guesses a label from `navigator.userAgent` (iPhone / Android Phone / Mac / Windows PC / Device)
+3. `POST /api/device/register` — creates a `DeviceState` in the same in-memory store as agents (separate `devices` map)
+4. Redirects to `/`, where a heartbeat effect (`POST /api/device/heartbeat` every 15s while any tab from that browser is open) keeps it marked online — devices go **offline** after 30s without a heartbeat (shorter than the host agent's 45s, since a phone stops heartbeating the instant its tab closes)
+
+Rename/forget reuse the same `PUT`/`DELETE /api/device/:id` pattern as "My Computer". `getShareableOrigin()` (`src/lib/network.ts`) picks the right URL for the QR: the Vercel deployment URL in production, or the machine's LAN IP locally (so a phone on the same Wi-Fi can actually reach it — `localhost` wouldn't resolve on the phone).
+
+#### `src/lib/google-auth.ts` + `src/app/api/google/*` — Google Drive account
+A minimal OAuth2 authorization-code flow, hand-rolled with `fetch` (no `googleapis` dependency, matching this repo's "no heavy deps" style):
+- `GET /api/google/auth` — builds the Google consent URL (`drive.file` + `userinfo.email` scopes, `access_type=offline` for a refresh token), stashes a CSRF `state` nonce, redirects
+- `GET /api/google/callback` — validates `state`, exchanges the code for tokens, fetches the connected email, stores the connection
+- The connection (access token, refresh token, expiry, email) lives in a `globalThis` singleton, same pattern as `control-plane.ts` — resets on server restart, so reconnecting is a one-click "CONNECT" away
+- QuickShare's upload form can pass `toDrive=1`; if Google is connected, `/api/share` also calls `uploadFileToDrive()` (multipart upload to the Drive v3 API) and returns a `driveUrl` alongside the usual QR link
+- Requires `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` from a Google Cloud OAuth client (Web application type), with `<origin>/api/google/callback` registered as an authorized redirect URI for every origin you use (e.g. both `http://localhost:3000` and the Vercel production URL)
 
 ---
 
@@ -272,7 +306,11 @@ ANTHROPIC_API_KEY=sk-ant-...          # Claude AI (required for chat tab)
 HOST_AGENT_TOKEN=native-dev-token     # Shared secret between web and agent
 BLOB_READ_WRITE_TOKEN=vercel_blob_... # Optional — enables Vercel Blob for QuickShare
 BLOB_STORE_ID=store_...               # Set automatically when Blob store is linked
+GOOGLE_CLIENT_ID=...                  # Optional — enables "Connect Google Drive" (CONNECT tab)
+GOOGLE_CLIENT_SECRET=...              # Google Cloud OAuth client secret (Web application type)
 ```
+
+Without `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, the CONNECT tab still shows Devices; the Google Drive row just displays "Not configured on this deployment" and the CONNECT button is disabled.
 
 ---
 
@@ -312,4 +350,6 @@ BLOB_STORE_ID=store_...               # Set automatically when Blob store is lin
 - **Launcher uses `FindRoot()`** — the exe can live anywhere (`dist/`, desktop shortcut, etc.) and still find the Next.js project by walking up looking for `package.json`.
 - **Claude model is Haiku** — switched from Opus for cost. System prompt is narrow (computer/file assistant) so Haiku quality is sufficient.
 - **"My Computer" reuses agent CRUD, not a new store** — the host agent already registers/heartbeats itself as an `AgentState`. Rename/forget are just `PUT`/`DELETE` on that same record (`/api/computer/:id`); there's no separate "computer" entity in `control-plane.ts`.
-- **No elevation required** — Hotspot/Devices (the only features needing `netsh`/firewall access) were removed; `app.manifest` now requests `asInvoker`.
+- **No elevation required** — Hotspot/Devices (the only features needing `netsh`/firewall access) were removed; `app.manifest` now requests `asInvoker`. The current **CONNECT** tab's "devices" are unrelated to that old removed feature — they're just browser tabs that register themselves over HTTP, no OS-level networking access needed.
+- **Devices are a lighter-weight sibling of agents, not the same entity** — a paired phone can't run the C# host agent, so it gets its own `DeviceState` + 30s offline window (vs the agent's 45s) in `control-plane.ts`, registered by a plain browser page (`/pair`) instead of a native process.
+- **Google connection is single-account, in-memory, no `googleapis` dependency** — this is a personal/local tool, not a multi-tenant app, so one connected Drive account or store db here would be overkill; a small hand-rolled `fetch`-based OAuth2 client matches the project's existing minimal-dependency style and resets on restart same as everything else in `control-plane.ts`.

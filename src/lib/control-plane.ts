@@ -11,6 +11,15 @@ export interface AgentState {
   status: "online" | "offline";
 }
 
+export interface DeviceState {
+  deviceId: string;
+  label: string;
+  kind: string;
+  userAgent: string;
+  lastSeenAt: string;
+  status: "online" | "offline";
+}
+
 export interface CommandState {
   id: string;
   agentId: string;
@@ -25,6 +34,7 @@ export interface CommandState {
 interface ControlPlaneStore {
   agents: Map<string, AgentState>;
   commands: Map<string, CommandState[]>;
+  devices: Map<string, DeviceState>;
 }
 
 declare global {
@@ -36,9 +46,13 @@ const store =
   (globalThis.nativeControlPlaneStore = {
     agents: new Map<string, AgentState>(),
     commands: new Map<string, CommandState[]>(),
+    devices: new Map<string, DeviceState>(),
   });
 
+// devices only exist while a phone/browser tab is open and heartbeating, so
+// they use a shorter window than the host agent's 45s poll interval.
 const OFFLINE_THRESHOLD_MS = 45_000;
+const DEVICE_OFFLINE_THRESHOLD_MS = 30_000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -49,6 +63,15 @@ function updateAgentStatus(agent: AgentState): AgentState {
   const online = Date.now() - lastSeenMs < OFFLINE_THRESHOLD_MS;
   return {
     ...agent,
+    status: online ? "online" : "offline",
+  };
+}
+
+function updateDeviceStatus(device: DeviceState): DeviceState {
+  const lastSeenMs = new Date(device.lastSeenAt).getTime();
+  const online = Date.now() - lastSeenMs < DEVICE_OFFLINE_THRESHOLD_MS;
+  return {
+    ...device,
     status: online ? "online" : "offline",
   };
 }
@@ -108,6 +131,52 @@ export function removeAgent(agentId: string): boolean {
   const existed = store.agents.delete(agentId);
   store.commands.delete(agentId);
   return existed;
+}
+
+export function registerDevice(input: {
+  deviceId: string;
+  label: string;
+  kind: string;
+  userAgent: string;
+}): DeviceState {
+  const current = store.devices.get(input.deviceId);
+  const next: DeviceState = updateDeviceStatus({
+    deviceId: input.deviceId,
+    label: input.label || current?.label || "Device",
+    kind: input.kind || current?.kind || "unknown",
+    userAgent: input.userAgent || current?.userAgent || "",
+    lastSeenAt: nowIso(),
+    status: "online",
+  });
+
+  store.devices.set(input.deviceId, next);
+  return next;
+}
+
+export function heartbeatDevice(deviceId: string): DeviceState | null {
+  const device = store.devices.get(deviceId);
+  if (!device) {
+    return null;
+  }
+
+  const updated = updateDeviceStatus({ ...device, lastSeenAt: nowIso() });
+  store.devices.set(deviceId, updated);
+  return updated;
+}
+
+export function renameDevice(deviceId: string, label: string): DeviceState | null {
+  const device = store.devices.get(deviceId);
+  if (!device) {
+    return null;
+  }
+
+  const updated = updateDeviceStatus({ ...device, label });
+  store.devices.set(deviceId, updated);
+  return updated;
+}
+
+export function removeDevice(deviceId: string): boolean {
+  return store.devices.delete(deviceId);
 }
 
 export function enqueueCommand(input: {
@@ -171,11 +240,13 @@ export function completeCommand(input: {
 export function snapshotState() {
   const agents = Array.from(store.agents.values()).map(updateAgentStatus);
   const commands = Array.from(store.commands.values()).flat();
+  const devices = Array.from(store.devices.values()).map(updateDeviceStatus);
 
   return {
     generatedAt: nowIso(),
     agents: agents.sort((a, b) => a.agentId.localeCompare(b.agentId)),
     commands: commands.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    devices: devices.sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt)),
   };
 }
 
