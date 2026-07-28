@@ -273,6 +273,7 @@ export default function Home() {
             <input
               ref={fileRef}
               type="file"
+              accept="*/*"
               style={{ display: "none" }}
               onChange={(e) => {
                 const f = e.target.files?.[0];
