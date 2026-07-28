@@ -3,6 +3,7 @@ import {
   dispatchPendingCommands,
   enqueueCommand,
   seedDemoAgentIfEmpty,
+  type CommandType,
 } from "@/lib/control-plane";
 
 function isAuthorized(request: NextRequest): boolean {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
         agentId?: string;
-        type?: "sync_media";
+        type?: CommandType;
         payload?: Record<string, unknown>;
       }
     | null;

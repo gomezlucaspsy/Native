@@ -35,8 +35,10 @@ while (true)
         {
             var (ok, output) = cmd.Type switch
             {
-                "sync_media" => (true, "media sync job enqueued"),
-                var unknown  => (false, $"unsupported command: {unknown}"),
+                "sync_media"  => (true, "media sync job enqueued"),
+                "list_files"  => FileAccess.List(cmd.Payload, cfg.SharedRoot),
+                "read_file"   => FileAccess.Read(cmd.Payload, cfg.SharedRoot),
+                var unknown   => (false, $"unsupported command: {unknown}"),
             };
 
             Console.WriteLine($"cmd={cmd.Type} ok={ok}");

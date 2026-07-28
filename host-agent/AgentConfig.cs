@@ -11,6 +11,7 @@ internal sealed class AgentConfig
     public required string AuthToken       { get; init; }
     public required TimeSpan PollInterval  { get; init; }
     public required bool Once              { get; init; }
+    public required string SharedRoot      { get; init; }
 
     // Derived endpoints
     public string RegisterEndpoint      => $"{ControlPlaneUrl}/api/agent/register";
@@ -36,6 +37,8 @@ internal sealed class AgentConfig
             AuthToken       = Env("HOST_AGENT_TOKEN")     ?? "native-dev-token",
             PollInterval    = TimeSpan.FromSeconds(pollSecs),
             Once            = args.Contains("--once"),
+            SharedRoot      = Env("HOST_AGENT_SHARED_ROOT")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
         };
     }
 

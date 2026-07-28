@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 // HTTP client for the Next.js control-plane API.
@@ -68,7 +69,8 @@ internal sealed class ControlPlane(HttpClient http, AgentConfig cfg)
 internal sealed record Command(
     [property: JsonPropertyName("id")]      string Id,
     [property: JsonPropertyName("agentId")] string AgentId,
-    [property: JsonPropertyName("type")]    string Type);
+    [property: JsonPropertyName("type")]    string Type,
+    [property: JsonPropertyName("payload")] Dictionary<string, JsonElement>? Payload);
 
 internal sealed record CommandsResponse(
     [property: JsonPropertyName("commands")] List<Command> Commands);

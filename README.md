@@ -35,7 +35,7 @@ failures are logged to `dist/install.log` instead of failing silently.
 |---|---|---|
 | **MY COMPUTER** | See the host agent's online/offline status, rename it, or forget it | CRUD over the agent record: create+read via register/heartbeat, update (rename) via `PUT /api/computer/:id`, delete (forget) via `DELETE /api/computer/:id` |
 | **QUICKSHARE** | Drag-drop any file → QR code + direct link | Saved to disk locally, Vercel Blob in production |
-| **CLAUDE** | Chat assistant aware of the host computer & shared files | Anthropic `claude-haiku-4-5` via `/api/ai/chat` |
+| **CLAUDE** | Chat assistant aware of the host computer & shared files, and able to browse/read files on My Computer to ground answers in your own documents (NotebookLM-style) | Anthropic `claude-haiku-4-5` via `/api/ai/chat`, tool calls dispatched as `list_files`/`read_file` agent commands |
 
 ---
 
@@ -96,6 +96,7 @@ Native/
 │   ├── Program.cs                ← Agent loop: register → heartbeat → execute
 │   ├── ControlPlane.cs           ← HTTP client for the control-plane API
 │   ├── AgentConfig.cs            ← Env/CLI config + derived endpoint URLs
+│   ├── FileAccess.cs             ← Sandboxed list/read for Claude's file-context tools
 │   ├── host-agent.csproj         ← net8.0-windows
 │   └── app.manifest              ← asInvoker (no elevation needed)
 │
@@ -139,9 +140,11 @@ In-memory store using a `globalThis.nativeControlPlaneStore` singleton so it sur
 - `heartbeatAgent(agentId)` — refreshes `lastSeenAt`; agents go **offline** after 45 000 ms without a heartbeat
 - `renameAgent(agentId, label)` — updates the display label (My Computer rename)
 - `removeAgent(agentId)` — deletes the agent + its command queue (My Computer "forget")
+- `getOnlineAgent()` — returns the first online agent, used by the Claude tool loop to target file commands
 - `enqueueCommand(input)` — creates a queued command, returns it
 - `dispatchPendingCommands(agentId)` — returns queued commands and marks them `dispatched`
 - `completeCommand(...)` — marks command `completed` or `failed`, stores result string
+- `waitForCommand(agentId, commandId, timeoutMs)` — polls the store until a command reaches `completed`/`failed` or the timeout elapses; used to turn the async agent-poll round trip into something the Claude tool loop can `await`
 - `snapshotState()` — returns all agents + all commands flattened, used by `/api/control/state`
 
 #### `src/app/api/share/route.ts` — QuickShare storage strategy
@@ -151,11 +154,14 @@ Detects `process.env.BLOB_READ_WRITE_TOKEN` at runtime:
 
 QR code is generated with the `qrcode` npm package, coloured `#39ff14` on `#0a0a0a`, returned as a base64 data URL embedded in the JSON response.
 
-#### `src/app/api/ai/chat/route.ts` — Claude proxy
+#### `src/app/api/ai/chat/route.ts` — Claude proxy + "read My Computer" tool loop
 Model: `claude-haiku-4-5` (cheapest Anthropic model, sufficient for these assistant tasks).
 - Filters empty messages before sending
 - Enforces `user`-first message order (Anthropic API requirement)
 - System prompt: computer status + shared-file context, concise mode
+- Passes two tools to Claude — `list_computer_files` and `read_computer_file` — so it can ground answers in the user's own documents, NotebookLM-style, instead of only chatting generically
+- On a `tool_use` stop reason: picks `getOnlineAgent()`, enqueues a `list_files`/`read_file` command with the requested `path`, and `await waitForCommand(...)` (40s timeout — the host agent's default poll interval is 15s, so this needs headroom) before feeding the result back as a `tool_result` and looping (capped at 6 tool turns)
+- If no agent is online, or the command times out/fails, the tool result reports that back to Claude as an error so it can tell the user rather than hallucinate file contents
 - Returns `{ reply: string }` or `{ error: string }` with HTTP 500
 
 #### `src/app/api/computer/[id]/route.ts` — "My Computer" CRUD
@@ -183,7 +189,12 @@ Model: `claude-haiku-4-5` (cheapest Anthropic model, sufficient for these assist
 | Command type | Behavior |
 |---|---|
 | `sync_media` | *(stub)* — returns "enqueued", extensible for future features |
+| `list_files` | `FileAccess.List` — lists a directory under `HOST_AGENT_SHARED_ROOT` (top-level entries, dirs first, capped at 200) |
+| `read_file` | `FileAccess.Read` — reads a text/code/doc file under `HOST_AGENT_SHARED_ROOT` (capped at 200 KB, unsupported extensions rejected) |
 | *(anything else)* | Reported back as `unsupported command` |
+
+#### `FileAccess.cs` — sandboxed file access for Claude's tools
+Backs the `list_files`/`read_file` commands above. Both resolve the requested `path` against `HOST_AGENT_SHARED_ROOT` with `Path.GetFullPath` and reject anything that escapes the root (blocks `..` traversal). `Read` additionally rejects hidden/system entries and any extension not in a text/code/doc allowlist (`.txt`, `.md`, `.json`, `.cs`, `.ts`, …) — this feeds an LLM prompt, not a file transfer, so binaries (images, archives, executables) are deliberately kept out of Claude's context.
 
 #### Environment variables
 | Variable | Default | Purpose |
@@ -193,6 +204,7 @@ Model: `claude-haiku-4-5` (cheapest Anthropic model, sufficient for these assist
 | `HOST_AGENT_ID` | `host-main` | Unique agent ID shown in UI |
 | `HOST_AGENT_LABEL` | `Main Host` | Display name |
 | `HOST_AGENT_POLL_INTERVAL_SECS` | `15` | Polling frequency |
+| `HOST_AGENT_SHARED_ROOT` | Windows `MyDocuments` folder | Root folder Claude may browse/read via `list_computer_files`/`read_computer_file` |
 
 ---
 
@@ -254,6 +266,7 @@ ANTHROPIC_API_KEY=sk-ant-...          # Claude AI (required for chat tab)
 HOST_AGENT_TOKEN=native-dev-token     # Shared secret between web and agent
 BLOB_READ_WRITE_TOKEN=vercel_blob_... # Optional — enables Vercel Blob for QuickShare
 BLOB_STORE_ID=store_...               # Set automatically when Blob store is linked
+HOST_AGENT_SHARED_ROOT=C:\Users\you\Documents  # Optional — folder Claude may browse/read (host-agent side, defaults to Documents)
 ```
 
 ---
@@ -295,3 +308,5 @@ BLOB_STORE_ID=store_...               # Set automatically when Blob store is lin
 - **Claude model is Haiku** — switched from Opus for cost. System prompt is narrow (computer/file assistant) so Haiku quality is sufficient.
 - **"My Computer" reuses agent CRUD, not a new store** — the host agent already registers/heartbeats itself as an `AgentState`. Rename/forget are just `PUT`/`DELETE` on that same record (`/api/computer/:id`); there's no separate "computer" entity in `control-plane.ts`.
 - **No elevation required** — Hotspot/Devices (the only features needing `netsh`/firewall access) were removed; `app.manifest` now requests `asInvoker`.
+- **Claude reads My Computer through the existing pull-based command queue, not a new channel** — `list_files`/`read_file` are just more `CommandType`s. The chat route enqueues one, `await`s `waitForCommand(...)`, and feeds the result back to Claude as a `tool_result`. No new transport, no direct web→agent connection.
+- **File access is sandboxed and text-only** — reads/lists are confined to `HOST_AGENT_SHARED_ROOT` (path-traversal checked) and `read_file` only serves an allowlisted set of text/code/doc extensions, since the content is going straight into an LLM prompt.

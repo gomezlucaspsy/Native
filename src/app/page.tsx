@@ -108,7 +108,7 @@ export default function Home() {
   // ── Claude chat ───────────────────────────────────────────
   // NOTE: Anthropic requires conversation starts with role "user"
   // We store the welcome as a local display-only message, not sent to the API
-  const WELCOME = "Hey — ask me anything about your computer or shared files.";
+  const WELCOME = "Hey — ask me about your computer or shared files. I can also browse and read files from My Computer to answer questions grounded in your own documents.";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);

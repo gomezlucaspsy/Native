@@ -1,4 +1,4 @@
-export type CommandType = "sync_media";
+export type CommandType = "sync_media" | "list_files" | "read_file";
 
 export type CommandStatus = "queued" | "dispatched" | "completed" | "failed";
 
@@ -166,6 +166,38 @@ export function completeCommand(input: {
   command.result = input.result;
   command.updatedAt = nowIso();
   return { ...command };
+}
+
+export function getOnlineAgent(): AgentState | null {
+  const online = Array.from(store.agents.values())
+    .map(updateAgentStatus)
+    .filter((agent) => agent.status === "online");
+  return online[0] ?? null;
+}
+
+export function getCommand(
+  agentId: string,
+  commandId: string,
+): CommandState | null {
+  const queue = store.commands.get(agentId) ?? [];
+  const command = queue.find((item) => item.id === commandId);
+  return command ? { ...command } : null;
+}
+
+export async function waitForCommand(
+  agentId: string,
+  commandId: string,
+  timeoutMs: number,
+): Promise<CommandState | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const command = getCommand(agentId, commandId);
+    if (command && (command.status === "completed" || command.status === "failed")) {
+      return command;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  return getCommand(agentId, commandId);
 }
 
 export function snapshotState() {
