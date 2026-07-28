@@ -109,20 +109,64 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [blobEnabled, setBlobEnabled] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
   const anyRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    fetch("/api/status")
+      .then((res) => res.json())
+      .then((data: { architecture?: { fileStorage?: string } }) => {
+        setBlobEnabled(data.architecture?.fileStorage === "vercel-blob");
+      })
+      .catch(() => {});
+  }, []);
+
+  // Files go straight from the browser to Vercel Blob (bypassing this app's
+  // Functions entirely) whenever Blob storage is configured, so upload size
+  // isn't capped by a Function's request body limit. Falls back to the old
+  // server-upload path for local dev without a Blob token.
   async function uploadFile(file: File) {
     setUploading(true);
     setUploadError("");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/share", { method: "POST", body: form });
-      if (!res.ok) { setUploadError(`Upload failed: HTTP ${res.status}`); return; }
-      const item = await res.json() as ShareFile;
-      setShares((s) => [item, ...s]);
+      if (blobEnabled) {
+        const { upload } = await import("@vercel/blob/client");
+        const QRCode = (await import("qrcode")).default;
+
+        const id = `share-${Date.now()}`;
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const blob = await upload(`${id}-${safeName}`, file, {
+          access: "public",
+          handleUploadUrl: "/api/share/upload",
+          clientPayload: JSON.stringify({ id, name: file.name, size: file.size }),
+        });
+
+        const qr = await QRCode.toDataURL(blob.url, {
+          width: 512,
+          margin: 2,
+          errorCorrectionLevel: "M",
+          color: { dark: "#39ff14", light: "#0a0a0a" },
+        });
+
+        const item: ShareFile = {
+          id,
+          name: file.name,
+          size: file.size,
+          url: blob.url,
+          qr,
+          createdAt: new Date().toISOString(),
+        };
+        setShares((s) => [item, ...s]);
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/share", { method: "POST", body: form });
+        if (!res.ok) { setUploadError(`Upload failed: HTTP ${res.status}`); return; }
+        const item = await res.json() as ShareFile;
+        setShares((s) => [item, ...s]);
+      }
     } catch (e) {
       setUploadError(`Upload error: ${e}`);
     } finally {
