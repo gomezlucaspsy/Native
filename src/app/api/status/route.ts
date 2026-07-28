@@ -13,6 +13,7 @@ export function GET() {
       webApp: "nextjs",
       localAgent: "csharp-host-agent",
       ai: process.env.ANTHROPIC_API_KEY ? "configured" : "not-configured",
+      fileStorage: process.env.BLOB_READ_WRITE_TOKEN ? "vercel-blob" : "local-fs",
     },
     runtime: {
       agents: state.agents.length,
