@@ -7,6 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       messages: { role: "user" | "assistant"; text: string }[];
+      filesTree?: string;
     };
 
     // Anthropic requires messages alternate user/assistant and start with user
@@ -19,11 +20,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ reply: "Send a message to get started." });
     }
 
+    const system = [
+      "You are the assistant built into Native Share. You help the user check on their computer's status and share files via QR code. Be concise and practical.",
+      "The user also has a sandboxed virtual filesystem in the MY COMPUTER tab (browser-only, not the real disk). Current contents:",
+      body.filesTree?.trim() || "(empty)",
+      "You can create, update, or delete an entry in it by ending your reply with a single fenced block in this exact format (only when the user actually asks you to manage a file/folder):",
+      '```file-action\n{"action":"create","path":"/","name":"notes.txt","type":"file","content":"hello"}\n```',
+      'action is one of "create" | "update" | "delete". type is "file" | "folder" (omit for delete). path is the parent folder ("/" for root); name is required for create/update. Only include this block when actually performing a file operation.',
+    ].join("\n\n");
+
     const response = await client.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 1024,
-      system:
-        "You are the assistant built into Native Share. You help the user check on their computer's status and share files via QR code. Be concise and practical.",
+      system,
       messages: apiMessages,
     });
 

@@ -183,3 +183,97 @@ html, body {
 
 /* error text */
 .err-text { font-size: 0.75rem; color: var(--red); }
+
+/* ── wide pane (computer tab: agent card + virtual files) ── */
+.pane-wide { max-width: 960px; }
+
+.hs-card.compact { padding: 1.25rem 1.5rem; max-width: 100%; }
+
+.section-head { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.5rem; }
+
+/* ── virtual file explorer ── */
+.explorer {
+  display: flex;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 360px;
+  max-height: 520px;
+}
+
+.explorer-side {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+
+.explorer-crumbs {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.65rem;
+}
+.crumb { display: flex; align-items: center; gap: 0.2rem; }
+.crumb-sep { color: var(--muted); }
+.crumb button {
+  background: none; border: none; color: var(--green);
+  font-family: inherit; font-size: 0.65rem; cursor: pointer; padding: 0;
+}
+
+.explorer-toolbar { display: flex; gap: 0.4rem; padding: 0.4rem; border-bottom: 1px solid var(--border); }
+.explorer-toolbar .browse-btn { flex: 1; margin-top: 0; }
+
+.explorer-add-form {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.5rem; border-bottom: 1px solid var(--border);
+}
+
+.explorer-list { flex: 1; overflow-y: auto; padding: 0.3rem; }
+
+.explorer-item {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.4rem 0.45rem; margin-bottom: 1px;
+  cursor: pointer; font-size: 0.72rem;
+  border: 1px solid transparent;
+}
+.explorer-item:hover { background: rgba(57,255,20,0.06); }
+.explorer-item.active { border-color: var(--green); background: var(--green-glow); }
+
+.explorer-badge {
+  flex-shrink: 0; font-size: 0.55rem; font-weight: 700; letter-spacing: 0.04em;
+  padding: 0.1rem 0.3rem; border: 1px solid var(--border); color: var(--green);
+}
+.explorer-badge.dir { color: var(--muted); }
+
+.explorer-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.explorer-item-del {
+  flex-shrink: 0; background: none; border: none; color: var(--muted);
+  cursor: pointer; font-size: 0.7rem; opacity: 0.5; padding: 0 0.2rem;
+}
+.explorer-item-del:hover { opacity: 1; color: var(--red); }
+
+.explorer-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.explorer-editor-head {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border);
+}
+.explorer-editor-path { flex: 1; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explorer-save-msg { font-size: 0.65rem; color: var(--green); flex-shrink: 0; }
+
+.hs-btn.compact { width: auto; padding: 0.4rem 0.7rem; flex-shrink: 0; }
+
+.explorer-textarea {
+  flex: 1; width: 100%; padding: 0.9rem;
+  background: var(--bg); border: none; outline: none; resize: none;
+  color: var(--fg); font-family: inherit; font-size: 0.75rem; line-height: 1.6;
+}
+.explorer-textarea.small { flex: none; height: 80px; padding: 0.5rem; }
+
+.explorer-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.4rem; color: var(--muted); font-size: 0.78rem;
+}
+.explorer-empty-hint { font-size: 0.65rem; opacity: 0.7; }

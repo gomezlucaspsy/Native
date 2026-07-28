@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import FileExplorer from "@/components/FileExplorer";
+import { fsApplyAction, fsLoad, fsSave, fsTree, type FsAction } from "@/lib/virtual-fs";
+
+const GITHUB_URL = "https://github.com/gomezlucaspsy/Native";
 
 type Agent = {
   agentId: string;
@@ -13,6 +17,20 @@ type Agent = {
 type Message = { role: "user" | "assistant"; text: string };
 type Tab = "computer" | "share" | "chat";
 type ShareFile = { id: string; name: string; size: number; url: string; qr: string; createdAt: string };
+
+// Claude replies can end with a fenced ```file-action {...}``` block to create,
+// update, or delete an entry in the sandboxed "computer" filesystem. Parse it
+// out, apply it, and strip it from the text shown in the chat bubble.
+function extractFileAction(text: string): { clean: string; action: FsAction | null } {
+  const match = text.match(/```file-action\s*\n([\s\S]*?)```/);
+  if (!match) return { clean: text, action: null };
+  try {
+    const action = JSON.parse(match[1].trim()) as FsAction;
+    return { clean: text.slice(0, match.index).trim(), action };
+  } catch {
+    return { clean: text, action: null };
+  }
+}
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("computer");
@@ -113,6 +131,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [filesVersion, setFilesVersion] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,14 +150,22 @@ export default function Home() {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, filesTree: fsTree(fsLoad()) }),
       });
       if (!res.ok) {
         const err = await res.text();
         throw new Error(err);
       }
       const data = await res.json() as { reply: string };
-      setMessages([...next, { role: "assistant", text: data.reply }]);
+      const { clean, action } = extractFileAction(data.reply);
+      let reply = clean;
+      if (action) {
+        fsSave(fsApplyAction(fsLoad(), action));
+        setFilesVersion((v) => v + 1);
+        const target = action.name ? (action.path === "/" ? `/${action.name}` : `${action.path}/${action.name}`) : action.path;
+        reply = `${reply}\n\n✓ ${action.action}d ${target}`.trim();
+      }
+      setMessages([...next, { role: "assistant", text: reply }]);
     } catch (e) {
       setChatError(`Claude error: ${e}`);
     } finally {
@@ -170,12 +197,13 @@ export default function Home() {
             {t.label}
           </button>
         ))}
+        <a className="tab" href={GITHUB_URL} target="_blank" rel="noreferrer">GITHUB ↗</a>
       </nav>
 
       {/* ── MY COMPUTER ── */}
       {tab === "computer" && (
-        <section className="pane center-pane">
-          <div className="hs-card">
+        <section className="pane pane-wide">
+          <div className="hs-card compact">
             {computerError && <p className="err-text">{computerError}</p>}
             {!computer && !computerError && (
               <p className="empty">No computer registered yet. Start the host agent.</p>
@@ -203,6 +231,15 @@ export default function Home() {
               </>
             )}
           </div>
+
+          <div className="section-head">
+            <h2 className="pane-title">VIRTUAL FILES</h2>
+            <p className="pane-sub">
+              A sandboxed file system stored in this browser — create, edit, and delete files/folders,
+              and Claude (in the CLAUDE tab) can read and write to it too.
+            </p>
+          </div>
+          <FileExplorer refreshKey={filesVersion} />
         </section>
       )}
 

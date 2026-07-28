@@ -60,3 +60,7 @@ launcher/obj/
 /public/shares/*
 !/public/shares/.gitkeep
 
+# installer build output (produced by .github/workflows/release.yml)
+/stage/
+/dist-installer/
+

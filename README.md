@@ -9,19 +9,24 @@
 
 ## Install
 
+**Recommended — download the installer, no terminal needed:**
+
+1. Go to the [Releases page](https://github.com/gomezlucaspsy/Native/releases/latest) (also linked from the **GITHUB** tab in the app) and download `NativeShareSetup.exe`.
+2. Double-click it. It's a normal Windows setup wizard — pick an install folder, optionally check "create a Desktop shortcut" and "launch at Windows startup", click through, done.
+3. It adds a proper entry to **Settings → Apps** (with an uninstaller) and puts Native Share in your Start Menu — no more hunting for a bare `.exe` someone dropped in a folder.
+4. The only prerequisite is [Node.js](https://nodejs.org) (LTS) — the installer checks for it and tells you if it's missing.
+
+The installer is built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from [`installer/NativeShare.iss`](installer/NativeShare.iss) (Inno Setup) — it bundles the prebuilt launcher, a self-contained host agent, and the web app's dependencies, so end users never need the .NET SDK or to run `npm install`/`dotnet publish` themselves.
+
+**Building from source (for development):**
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-One command: installs npm deps, builds the host agent + launcher, and creates
-**Desktop** and **Start Menu** shortcuts ("Native Share") pointed at the built
-exe — no need to hunt for `dist/NativeShare.exe` or run it once first.
-
-After that, launch from either shortcut, or:
-
-```
-dist/NativeShare.exe
-```
+Installs npm deps, builds the host agent + launcher, and creates **Desktop**
+and **Start Menu** shortcuts ("Native Share") pointed at the built exe. Launch
+from either shortcut, or run `dist/NativeShare.exe` directly.
 
 The launcher starts Next.js, the C# agent, and opens the browser automatically.
 It also (re)creates the same Desktop/Start Menu shortcuts on every launch —
@@ -33,9 +38,10 @@ failures are logged to `dist/install.log` instead of failing silently.
 
 | Tab | Feature | How |
 |---|---|---|
-| **MY COMPUTER** | See the host agent's online/offline status, rename it, or forget it | CRUD over the agent record: create+read via register/heartbeat, update (rename) via `PUT /api/computer/:id`, delete (forget) via `DELETE /api/computer/:id` |
+| **MY COMPUTER** | See the host agent's online/offline status, rename it, or forget it. Also has a **Virtual Files** panel — a sandboxed file system (files/folders, an editor with Ctrl+S) stored in the browser, which Claude can read and write to as well | Agent status is CRUD over the agent record: create+read via register/heartbeat, update (rename) via `PUT /api/computer/:id`, delete (forget) via `DELETE /api/computer/:id`. Virtual Files lives entirely in `localStorage` (`src/lib/virtual-fs.ts`) |
 | **QUICKSHARE** | Drag-drop any file → QR code + direct link | Saved to disk locally, Vercel Blob in production |
-| **CLAUDE** | Chat assistant aware of the host computer & shared files | Anthropic `claude-haiku-4-5` via `/api/ai/chat` |
+| **CLAUDE** | Chat assistant aware of the host computer, shared files, and the Virtual Files tree — can create/update/delete virtual files on request | Anthropic `claude-haiku-4-5` via `/api/ai/chat` |
+| **GITHUB ↗** | Opens the [source repo](https://github.com/gomezlucaspsy/Native) in a new tab — releases, issues, downloads | Plain external link, not an app tab |
 
 ---
 
@@ -71,7 +77,7 @@ failures are logged to `dist/install.log` instead of failing silently.
 Native/
 ├── src/                          TypeScript — web UI + all API logic
 │   ├── app/
-│   │   ├── page.tsx              ← Main UI: 4-tab React component
+│   │   ├── page.tsx              ← Main UI: 3-tab React component + external GITHUB link
 │   │   ├── globals.css           ← Terminal aesthetic (black / #39ff14 green)
 │   │   ├── layout.tsx            ← IBM Plex Mono font, metadata
 │   │   └── api/
@@ -89,8 +95,11 @@ Native/
 │   │       │   └── command-result/ POST  — agent reports outcome
 │   │       └── control/
 │   │           └── state/        GET  — full snapshot: agents + commands
+│   ├── components/
+│   │   └── FileExplorer.tsx      ← Virtual Files UI (breadcrumbs, list, editor pane)
 │   └── lib/
-│       └── control-plane.ts      ← In-memory store (globalThis singleton)
+│       ├── control-plane.ts      ← In-memory store (globalThis singleton)
+│       └── virtual-fs.ts         ← Virtual Files data model — localStorage-backed
 │
 ├── host-agent/                   C# .NET 8 — Windows host agent ("My Computer")
 │   ├── Program.cs                ← Agent loop: register → heartbeat → execute
@@ -104,7 +113,13 @@ Native/
 │   ├── NativeLauncher.csproj     ← WinExe, PublishSingleFile, win-x64
 │   └── icon.ico                  ← Multi-res glyph, neon green on black
 │
-├── install.ps1                   ← One-command installer: deps + builds + shortcuts
+├── install.ps1                   ← Build-from-source installer: deps + builds + shortcuts
+│
+├── installer/
+│   └── NativeShare.iss           ← Inno Setup script -> NativeShareSetup.exe
+│
+├── .github/workflows/
+│   └── release.yml               ← Builds + publishes NativeShareSetup.exe to Releases
 │
 ├── dist/
 │   ├── NativeShare.exe           ← Built single self-contained launcher exe
@@ -127,11 +142,14 @@ Native/
 **Runtime:** Node.js (Vercel serverless or local dev server)
 
 #### `src/app/page.tsx` — UI
-Single React component, no external UI library. Three tab views controlled by `useState<Tab>`.
+Single React component, no external UI library. Three tab views controlled by `useState<Tab>`, plus a fourth nav item (**GITHUB ↗**) that's a plain external `<a>` to the repo rather than a tab.
 
-- **My Computer tab** — reads the registered host agent from `GET /api/control/state` (polled every 5 s), shows an online/offline pill derived from `lastSeenAt`. Rename via `PUT /api/computer/:id`, forget via `DELETE /api/computer/:id` (the agent re-registers on its next heartbeat, since a 404 heartbeat triggers `RegisterAsync()` again on the C# side).
+- **My Computer tab** — reads the registered host agent from `GET /api/control/state` (polled every 5 s), shows an online/offline pill derived from `lastSeenAt`. Rename via `PUT /api/computer/:id`, forget via `DELETE /api/computer/:id` (the agent re-registers on its next heartbeat, since a 404 heartbeat triggers `RegisterAsync()` again on the C# side). Also renders `<FileExplorer>` — the **Virtual Files** panel.
 - **Share tab** — `FormData` POST to `/api/share`, receives `{ url, qr }` back. Renders the QR as an `<img src={dataUrl}>`. Drag-and-drop via `onDrop` + a separate BROWSE button (separate to avoid click conflicts).
-- **Claude tab** — Builds a `Message[]` array (user-first enforced), sends to `/api/ai/chat`, streams reply into chat bubbles. Welcome message is display-only, never sent to the API.
+- **Claude tab** — Builds a `Message[]` array (user-first enforced), sends to `/api/ai/chat` along with `fsTree(fsLoad())` as extra context. If the reply ends with a fenced `` ```file-action `` JSON block, `extractFileAction()` strips it from the displayed text and applies it to the Virtual Files store.
+
+#### `src/lib/virtual-fs.ts` + `src/components/FileExplorer.tsx` — Virtual Files
+A sandboxed filesystem that exists only in the browser's `localStorage` (key `native:vfs`) — no server, no database, inspired by the "mycomputer" file explorer in [personaforge](https://github.com/gomezlucaspsy/personaforge). `virtual-fs.ts` holds the pure data functions (`fsLoad`/`fsSave`/`fsList`/`fsTree`/`fsApplyAction`); `FileExplorer.tsx` is the two-pane UI (folder list + editor) built from the same terminal-aesthetic CSS classes as the rest of the app. Claude can act on it too — see the `chat`/`ai/chat` flow above.
 
 #### `src/lib/control-plane.ts` — Shared state
 In-memory store using a `globalThis.nativeControlPlaneStore` singleton so it survives Next.js hot-reload between requests. Key exports:

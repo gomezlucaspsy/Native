@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
@@ -203,9 +204,9 @@ static class Program
     {
         try
         {
-            var exe = Path.Combine(Root, "host-agent", "bin", "Release", "net8.0-windows10.0.19041.0", "host-agent.exe");
+            var exe = FindHostAgentExe();
 
-            ProcessStartInfo psi = File.Exists(exe)
+            ProcessStartInfo psi = exe != null
                 ? new ProcessStartInfo { FileName = exe, UseShellExecute = true,
                                          WorkingDirectory = Path.Combine(Root, "host-agent") }
                 : new ProcessStartInfo { FileName = "dotnet",
@@ -317,6 +318,27 @@ static class Program
                     return addr.Address.ToString();
         }
         return "localhost";
+    }
+
+    // The exact bin/ subfolder for host-agent.exe depends on how it was built —
+    // a bare "dotnet publish" (framework-dependent), a self-contained
+    // "-r win-x64 --self-contained" publish (installer builds), or even a plain
+    // build output — each lands under a different target-framework/RID/publish
+    // path. Search instead of hardcoding one, preferring a self-contained
+    // "publish" output (no .NET runtime dependency) and the most recently built.
+    static string? FindHostAgentExe()
+    {
+        var releaseDir = Path.Combine(Root, "host-agent", "bin", "Release");
+        if (!Directory.Exists(releaseDir)) return null;
+
+        var matches = Directory.GetFiles(releaseDir, "host-agent.exe", SearchOption.AllDirectories);
+        if (matches.Length == 0) return null;
+
+        var publishSep = $"{Path.DirectorySeparatorChar}publish{Path.DirectorySeparatorChar}";
+        return matches
+            .OrderByDescending(p => p.Contains(publishSep, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+            .ThenByDescending(File.GetLastWriteTimeUtc)
+            .First();
     }
 
     static string FindRoot()

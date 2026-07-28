@@ -1,0 +1,95 @@
+name: Build installer
+
+# Produces a single double-click NativeShareSetup.exe (Inno Setup) instead of
+# asking users to clone the repo and run install.ps1 in a terminal:
+#   - push a tag like v1.2.3  -> builds the installer and publishes a GitHub Release
+#   - manual "Run workflow"   -> builds the installer as a downloadable artifact only
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          if ($ref -match '^v(\d.*)$') {
+            $version = $matches[1]
+          } else {
+            $version = "0.0.0-dev"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install web app dependencies
+        run: npm ci
+
+      - name: Publish host agent (self-contained win-x64)
+        run: >
+          dotnet publish host-agent/host-agent.csproj -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true
+
+      - name: Publish desktop launcher (self-contained win-x64)
+        run: >
+          dotnet publish launcher/NativeLauncher.csproj -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true -o dist
+
+      - name: Assemble staging folder
+        shell: pwsh
+        run: |
+          $stage = "stage"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          Copy-Item package.json,package-lock.json,next.config.ts,next-env.d.ts,tsconfig.json,postcss.config.mjs,.env.example -Destination $stage
+          Copy-Item src,public,dist -Destination $stage -Recurse
+
+          New-Item -ItemType Directory -Force -Path "$stage\host-agent\bin\Release" | Out-Null
+          Copy-Item host-agent\bin\Release\* -Destination "$stage\host-agent\bin\Release" -Recurse
+
+          New-Item -ItemType Directory -Force -Path "$stage\node_modules" | Out-Null
+          Copy-Item node_modules\* -Destination "$stage\node_modules" -Recurse
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: >
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          "/DStageDir=$PWD\stage"
+          "/DMyAppVersion=${{ steps.version.outputs.version }}"
+          installer\NativeShare.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeShareSetup
+          path: dist-installer/NativeShareSetup.exe
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-installer/NativeShareSetup.exe
+          generate_release_notes: true
