@@ -51,13 +51,14 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "next-env.d.ts")) {
-            Set-Content -Path "next-env.d.ts" -Encoding utf8 -Value @'
-/// <reference types="next" />
-/// <reference types="next/image-types/global" />
-
-// NOTE: This file should not be edited
-// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
-'@
+            $lines = @(
+              '/// <reference types="next" />',
+              '/// <reference types="next/image-types/global" />',
+              '',
+              '// NOTE: This file should not be edited',
+              '// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.'
+            )
+            Set-Content -Path "next-env.d.ts" -Encoding utf8 -Value $lines
           }
 
       - name: Publish host agent (self-contained win-x64)
