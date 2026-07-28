@@ -57,6 +57,12 @@ html, body {
 }
 .hs-pill.on .pill-dot { box-shadow: 0 0 6px var(--green); }
 
+.hs-pill-btn {
+  font-family: inherit; cursor: pointer; background: none;
+  transition: border-color .15s, color .15s;
+}
+.hs-pill-btn:hover { border-color: var(--green); color: var(--green); }
+
 /* tabs */
 .tabs {
   position: relative; z-index: 1;
@@ -223,6 +229,51 @@ html, body {
 
 .section-head { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.5rem; }
 
+/* ── device card (My Computer identity panel) ── */
+.device-card {
+  display: flex; align-items: flex-start; gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.device-icon {
+  flex-shrink: 0; color: var(--muted);
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  border: 1px solid var(--border);
+}
+
+.device-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+
+.device-name-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+.device-name {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: none; border: none; color: #eee;
+  font-family: inherit; font-size: 0.95rem; font-weight: 700;
+  cursor: pointer; padding: 0.1rem 0;
+}
+.device-name:hover { color: var(--green); }
+.device-name .edit-icon { color: var(--muted); }
+.device-name:hover .edit-icon { color: var(--green); }
+
+.device-name-input {
+  font-size: 0.85rem; max-width: 220px;
+}
+
+.hs-sub.saving { color: var(--green); }
+
+.device-actions { margin-top: 0.3rem; }
+
+.text-btn {
+  background: none; border: none; font-family: inherit;
+  font-size: 0.68rem; letter-spacing: 0.06em; color: var(--muted);
+  cursor: pointer; padding: 0.2rem 0; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.text-btn.danger:hover { color: var(--red); }
+
 /* ── virtual file explorer ── */
 .explorer {
   display: flex;
@@ -254,7 +305,20 @@ html, body {
 }
 
 .explorer-toolbar { display: flex; gap: 0.4rem; padding: 0.4rem; border-bottom: 1px solid var(--border); }
-.explorer-toolbar .browse-btn { flex: 1; margin-top: 0; }
+
+.icon-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem;
+  background: none;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--green); color: var(--green); }
+.icon-btn.active { border-color: var(--green); color: var(--green); background: var(--green-glow); }
 
 .explorer-add-form {
   display: flex; flex-direction: column; gap: 0.4rem;
@@ -273,7 +337,8 @@ html, body {
 .explorer-item.active { border-color: var(--green); background: var(--green-glow); }
 
 .explorer-badge {
-  flex-shrink: 0; font-size: 0.55rem; font-weight: 700; letter-spacing: 0.04em;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  min-width: 1.5rem; font-size: 0.55rem; font-weight: 700; letter-spacing: 0.04em;
   padding: 0.1rem 0.3rem; border: 1px solid var(--border); color: var(--green);
 }
 .explorer-badge.dir { color: var(--muted); }

@@ -40,6 +40,9 @@ export default function Home() {
   const [computerError, setComputerError] = useState("");
   const [labelInput, setLabelInput] = useState("");
   const [savingLabel, setSavingLabel] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [confirmForget, setConfirmForget] = useState(false);
+  const forgetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function loadComputer() {
     try {
@@ -55,19 +58,32 @@ export default function Home() {
     }
   }
 
-  async function renameComputer() {
-    if (!computer || !labelInput.trim()) return;
+  async function commitRename() {
+    const value = labelInput.trim();
+    if (!computer || !value || value === computer.label) { setEditingName(false); return; }
     setSavingLabel(true);
     try {
       const res = await fetch(`/api/computer/${computer.agentId}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ label: labelInput.trim() }),
+        body: JSON.stringify({ label: value }),
       });
       if (res.ok) setComputer(await res.json());
     } finally {
       setSavingLabel(false);
+      setEditingName(false);
     }
+  }
+
+  function handleForgetClick() {
+    if (!confirmForget) {
+      setConfirmForget(true);
+      forgetTimer.current = setTimeout(() => setConfirmForget(false), 3000);
+      return;
+    }
+    if (forgetTimer.current) clearTimeout(forgetTimer.current);
+    setConfirmForget(false);
+    forgetComputer();
   }
 
   async function forgetComputer() {
@@ -82,6 +98,8 @@ export default function Home() {
     const t = setInterval(loadComputer, 5000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => () => { if (forgetTimer.current) clearTimeout(forgetTimer.current); }, []);
 
   // ── QuickShare ────────────────────────────────────────────
   const [shares, setShares] = useState<ShareFile[]>([]);
@@ -185,10 +203,14 @@ export default function Home() {
 
       <header className="topbar">
         <span className="logo">NATIVE<span className="logo-accent">//</span>SHARE</span>
-        <span className={`hs-pill ${computer?.status === "online" ? "on" : "off"}`}>
+        <button
+          className={`hs-pill hs-pill-btn ${computer?.status === "online" ? "on" : "off"}`}
+          onClick={() => setTab("computer")}
+          title="Go to My Computer"
+        >
           <span className="pill-dot" />
-          {computer ? `${computer.status.toUpperCase()}` : "NO AGENT"}
-        </span>
+          {computer ? `${computer.label} · ${computer.status.toUpperCase()}` : "NO AGENT"}
+        </button>
       </header>
 
       <nav className="tabs">
@@ -203,33 +225,63 @@ export default function Home() {
       {/* ── MY COMPUTER ── */}
       {tab === "computer" && (
         <section className="pane pane-wide">
-          <div className="hs-card compact">
-            {computerError && <p className="err-text">{computerError}</p>}
-            {!computer && !computerError && (
-              <p className="empty">No computer registered yet. Start the host agent.</p>
-            )}
-            {computer && (
-              <>
-                <span className={`hs-pill ${computer.status === "online" ? "on" : "off"}`}>
-                  <span className="pill-dot" />
-                  {computer.status.toUpperCase()}
-                </span>
-                <div className="list-row" style={{ width: "100%", marginTop: "1rem" }}>
-                  <input
-                    className="rename-input"
-                    value={labelInput}
-                    onChange={(e) => setLabelInput(e.target.value)}
-                    placeholder="Computer name"
-                  />
-                  <button className="hs-btn primary" onClick={renameComputer} disabled={savingLabel || !labelInput.trim()}>
-                    {savingLabel ? "SAVING..." : "SAVE"}
-                  </button>
-                </div>
-                <p className="hs-sub">{computer.platform} · v{computer.version}</p>
-                <p className="hs-sub">Last seen {new Date(computer.lastSeenAt).toLocaleTimeString()}</p>
-                <button className="hs-btn danger" onClick={forgetComputer}>FORGET THIS COMPUTER</button>
-              </>
-            )}
+          <div className="device-card">
+            <span className="device-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <rect x="2.5" y="4" width="19" height="12.5" rx="1.2" />
+                <path d="M8 20h8M12 16.5V20" strokeLinecap="round" />
+              </svg>
+            </span>
+
+            <div className="device-main">
+              {computerError && <p className="err-text">{computerError}</p>}
+              {!computer && !computerError && (
+                <p className="empty">No computer registered yet. Start the host agent.</p>
+              )}
+              {computer && (
+                <>
+                  <div className="device-name-row">
+                    {editingName ? (
+                      <input
+                        autoFocus
+                        className="rename-input device-name-input"
+                        value={labelInput}
+                        onChange={(e) => setLabelInput(e.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename();
+                          if (e.key === "Escape") { setLabelInput(computer.label); setEditingName(false); }
+                        }}
+                      />
+                    ) : (
+                      <button
+                        className="device-name"
+                        onClick={() => { setLabelInput(computer.label); setEditingName(true); }}
+                        title="Rename this computer"
+                      >
+                        {computer.label}
+                        <svg className="edit-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19 3 20l1-4Z" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    )}
+                    <span className={`hs-pill ${computer.status === "online" ? "on" : "off"}`}>
+                      <span className="pill-dot" />
+                      {computer.status.toUpperCase()}
+                    </span>
+                    {savingLabel && <span className="hs-sub saving">SAVING…</span>}
+                  </div>
+                  <p className="hs-sub">
+                    {computer.platform} · v{computer.version} · last seen {new Date(computer.lastSeenAt).toLocaleTimeString()}
+                  </p>
+                  <div className="device-actions">
+                    <button className="text-btn danger" onClick={handleForgetClick}>
+                      {confirmForget ? "Click again to confirm" : "Forget this computer"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="section-head">

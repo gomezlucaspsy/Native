@@ -15,6 +15,33 @@ function badge(name: string): string {
   return EXT_BADGES[ext] ?? (ext ? ext.toUpperCase().slice(0, 2) : "??");
 }
 
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v8.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FolderPlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v8.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z" strokeLinejoin="round" />
+      <path d="M12 11v4.5M9.75 13.25h4.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FilePlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M6.5 3.5h7l4 4v12A1.5 1.5 0 0 1 16 21H6.5A1.5 1.5 0 0 1 5 19.5v-14A1.5 1.5 0 0 1 6.5 3.5Z" strokeLinejoin="round" />
+      <path d="M13 3.5V8h4.5" strokeLinejoin="round" />
+      <path d="M12 12v4.5M9.75 14.25h4.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export type FileExplorerHandle = { refresh: () => void };
 
 export default function FileExplorer({ refreshKey }: { refreshKey?: number }) {
@@ -107,16 +134,18 @@ export default function FileExplorer({ refreshKey }: { refreshKey?: number }) {
 
         <div className="explorer-toolbar">
           <button
-            className="browse-btn"
-            onClick={() => { setAdding((v) => (v === "file" ? null : "file")); setAddError(""); }}
-          >
-            {adding === "file" ? "CANCEL" : "+ FILE"}
-          </button>
-          <button
-            className="browse-btn"
+            className={`icon-btn ${adding === "folder" ? "active" : ""}`}
             onClick={() => { setAdding((v) => (v === "folder" ? null : "folder")); setAddError(""); }}
           >
-            {adding === "folder" ? "CANCEL" : "+ DIR"}
+            <FolderPlusIcon />
+            {adding === "folder" ? "Cancel" : "New folder"}
+          </button>
+          <button
+            className={`icon-btn ${adding === "file" ? "active" : ""}`}
+            onClick={() => { setAdding((v) => (v === "file" ? null : "file")); setAddError(""); }}
+          >
+            <FilePlusIcon />
+            {adding === "file" ? "Cancel" : "New file"}
           </button>
         </div>
 
@@ -152,7 +181,7 @@ export default function FileExplorer({ refreshKey }: { refreshKey?: number }) {
               onClick={() => openItem(item)}
             >
               <span className={`explorer-badge ${item.type === "folder" ? "dir" : ""}`}>
-                {item.type === "folder" ? "DIR" : badge(item.name)}
+                {item.type === "folder" ? <FolderIcon /> : badge(item.name)}
               </span>
               <span className="explorer-item-name">{item.name}</span>
               <button className="explorer-item-del" onClick={(e) => deleteItem(item, e)}>✕</button>
