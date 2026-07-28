@@ -78,7 +78,9 @@ export async function POST(request: NextRequest) {
     }
 
     const qr = await QRCode.toDataURL(fileUrl, {
-      width: 160,
+      width: 512,
+      margin: 2,
+      errorCorrectionLevel: "M",
       color: { dark: "#39ff14", light: "#0a0a0a" },
     });
 
